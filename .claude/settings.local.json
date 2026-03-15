@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest:*)",
+      "Bash(xcopy:*)",
+      "Bash(npm install:*)",
+      "Bash(npx next build)",
+      "Bash(timeout 15 npx next dev:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:boardgamegeek.com)",
+      "Bash(find /c/Users/Mariu/Desktop/VibeCode/What2Play/src -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.css \\\\\\))",
+      "Bash(where java:*)",
+      "Bash(java -version)",
+      "Bash(dir \"C:\\\\Program Files\\\\Android\\\\Android Studio\")",
+      "Bash(winget --version)",
+      "Bash(winget install:*)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(gh --version)",
+      "Bash(gh auth:*)"
+    ]
+  }
+}

@@ -1,0 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-display: 'Bricolage Grotesque', serif;
+  --font-body: 'DM Sans', sans-serif;
+
+  --color-cream: #F8F6F1;
+  --color-cream-dark: #EFEADE;
+
+  --color-forest: #1A5C3A;
+  --color-forest-dark: #144A2E;
+  --color-forest-light: #E8F3ED;
+
+  --color-amber: #D4A843;
+  --color-amber-light: #FBF3E0;
+  --color-amber-dark: #B8922F;
+
+  --color-coral: #C4574A;
+  --color-coral-light: #FDF0EE;
+
+  --color-warm-50: #FAF9F7;
+  --color-warm-100: #F3F0EB;
+  --color-warm-200: #E7E0D8;
+  --color-warm-300: #D4CBC0;
+  --color-warm-400: #B5A898;
+  --color-warm-500: #978A7A;
+  --color-warm-600: #78716C;
+  --color-warm-700: #57534E;
+  --color-warm-800: #3B3835;
+  --color-warm-900: #1C1917;
+}
+
+/* ─── Base styles ─── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-cream);
+  color: var(--color-warm-900);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* ─── Custom scrollbar ─── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-warm-300);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-warm-400);
+}
+
+/* ─── Selection ─── */
+::selection {
+  background: var(--color-forest-light);
+  color: var(--color-forest-dark);
+}
+
+/* ─── Focus ring ─── */
+*:focus-visible {
+  outline: 2px solid var(--color-forest);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Smooth card hover ─── */
+.card-hover {
+  transition: transform 0.25s cubic-bezier(0.33, 1, 0.68, 1), box-shadow 0.25s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px -8px rgba(28, 25, 23, 0.12), 0 4px 10px -4px rgba(28, 25, 23, 0.06);
+}
+
+/* ─── Subtle noise texture overlay ─── */
+.bg-noise::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Spinner ─── */
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 2.5px solid var(--color-warm-200);
+  border-top-color: var(--color-forest);
+  animation: spin-slow 0.8s linear infinite;
+}
+
+/* ─── Stagger animation for lists ─── */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-up {
+  animation: fade-up 0.4s cubic-bezier(0.33, 1, 0.68, 1) both;
+}
