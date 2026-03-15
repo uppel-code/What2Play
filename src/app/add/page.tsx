@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import type { BggGameData, BggSearchResult } from "@/types/game";
 import { createGame, getGameByBggId } from "@/lib/db-client";
 import { searchBgg as bggSearch, fetchBggThing, fetchBggCollection, isBggConfigured } from "@/services/bgg-client";
+import { isAiConfigured, recognizeGamesFromImage, compressImage } from "@/services/ai-client";
+import type { RecognizedGame } from "@/services/ai-client";
 
-type ActiveTab = "bgg-search" | "bgg-collection" | "bgg-bulk" | "manual";
+type ActiveTab = "bgg-search" | "bgg-collection" | "bgg-bulk" | "photo-scan" | "manual";
 
 export default function AddGamePage() {
   const router = useRouter();
@@ -18,15 +20,18 @@ export default function AddGamePage() {
       <p className="mt-1 text-sm font-medium text-warm-500">Erweitere deine Sammlung</p>
 
       {/* Tabs */}
-      <div className="mt-5 flex gap-1 rounded-2xl bg-warm-100 p-1">
+      <div className="mt-5 flex gap-1 rounded-2xl bg-warm-100 p-1 overflow-x-auto">
         <TabButton active={activeTab === "bgg-search"} onClick={() => setActiveTab("bgg-search")}>
           BGG Suche
         </TabButton>
+        <TabButton active={activeTab === "photo-scan"} onClick={() => setActiveTab("photo-scan")}>
+          Foto-Scan
+        </TabButton>
         <TabButton active={activeTab === "bgg-collection"} onClick={() => setActiveTab("bgg-collection")}>
-          Sammlung importieren
+          Sammlung
         </TabButton>
         <TabButton active={activeTab === "bgg-bulk"} onClick={() => setActiveTab("bgg-bulk")}>
-          IDs importieren
+          IDs
         </TabButton>
         <TabButton active={activeTab === "manual"} onClick={() => setActiveTab("manual")}>
           Manuell
@@ -34,6 +39,7 @@ export default function AddGamePage() {
       </div>
 
       {activeTab === "bgg-search" && <BggSearchTab router={router} />}
+      {activeTab === "photo-scan" && <PhotoScanTab />}
       {activeTab === "bgg-collection" && <BggCollectionTab router={router} />}
       {activeTab === "bgg-bulk" && <BggBulkTab />}
       {activeTab === "manual" && <ManualTab router={router} />}
@@ -736,6 +742,491 @@ function BggBulkTab() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Photo Scan Tab ───
+
+interface BggMatch {
+  recognized: RecognizedGame;
+  bggResult: BggSearchResult | null;
+  bggData: BggGameData | null;
+  selected: boolean;
+  status: "pending" | "searching" | "found" | "not_found" | "imported" | "skipped" | "failed";
+}
+
+function PhotoScanTab() {
+  const [aiReady, setAiReady] = useState<boolean | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState("");
+  const [matches, setMatches] = useState<BggMatch[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    isAiConfigured().then(setAiReady).catch(() => setAiReady(false));
+  }, []);
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setError(null);
+    setMatches([]);
+    setImportSummary(null);
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = (ev) => setImagePreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+
+    // Compress and analyze
+    setAnalyzing(true);
+    setAnalyzeProgress("Bild wird komprimiert...");
+
+    try {
+      const base64 = await compressImage(file);
+
+      setAnalyzeProgress("AI analysiert das Foto...");
+      const recognized = await recognizeGamesFromImage(base64);
+
+      if (recognized.length === 0) {
+        setError("Keine Spiele auf dem Foto erkannt. Versuche ein deutlicheres Foto mit sichtbaren Spieletiteln.");
+        setAnalyzing(false);
+        return;
+      }
+
+      // Initialize matches
+      const initialMatches: BggMatch[] = recognized.map((r) => ({
+        recognized: r,
+        bggResult: null,
+        bggData: null,
+        selected: true,
+        status: "pending" as const,
+      }));
+      setMatches(initialMatches);
+
+      // Search BGG for each recognized game
+      setAnalyzeProgress(`Suche ${recognized.length} Spiele auf BGG...`);
+
+      for (let i = 0; i < recognized.length; i++) {
+        const game = recognized[i];
+
+        setMatches((prev) =>
+          prev.map((m, idx) => (idx === i ? { ...m, status: "searching" } : m))
+        );
+
+        try {
+          const results = await bggSearch(game.name);
+          if (results.length > 0) {
+            // Fetch full details for best match
+            const details = await fetchBggThing(results[0].bggId);
+            setMatches((prev) =>
+              prev.map((m, idx) =>
+                idx === i
+                  ? { ...m, bggResult: results[0], bggData: details, status: "found" }
+                  : m
+              )
+            );
+          } else {
+            setMatches((prev) =>
+              prev.map((m, idx) => (idx === i ? { ...m, status: "not_found" } : m))
+            );
+          }
+        } catch {
+          setMatches((prev) =>
+            prev.map((m, idx) => (idx === i ? { ...m, status: "not_found" } : m))
+          );
+        }
+      }
+    } catch (err) {
+      if (err instanceof Error) {
+        if (err.message === "AI_NOT_CONFIGURED") {
+          setAiReady(false);
+        } else if (err.message === "AI_INVALID_KEY") {
+          setError("Der AI API-Key ist ungültig. Bitte prüfe ihn in den Einstellungen.");
+        } else if (err.message === "AI_RATE_LIMIT") {
+          setError("AI Rate-Limit erreicht. Bitte warte einen Moment und versuche es erneut.");
+        } else {
+          setError(`Analyse fehlgeschlagen: ${err.message}`);
+        }
+      }
+    } finally {
+      setAnalyzing(false);
+      setAnalyzeProgress("");
+    }
+  }
+
+  function toggleMatch(index: number) {
+    setMatches((prev) =>
+      prev.map((m, i) => (i === index ? { ...m, selected: !m.selected } : m))
+    );
+  }
+
+  function toggleAll() {
+    const foundMatches = matches.filter((m) => m.status === "found" && m.bggData);
+    const allSelected = foundMatches.every((m) => m.selected);
+    setMatches((prev) =>
+      prev.map((m) =>
+        m.status === "found" && m.bggData ? { ...m, selected: !allSelected } : m
+      )
+    );
+  }
+
+  async function handleImport() {
+    const toImport = matches.filter((m) => m.selected && m.bggData && m.status === "found");
+    if (toImport.length === 0) return;
+
+    setImporting(true);
+    setError(null);
+    let imported = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (let i = 0; i < matches.length; i++) {
+      const m = matches[i];
+      if (!m.selected || !m.bggData || m.status !== "found") continue;
+
+      try {
+        const existing = await getGameByBggId(m.bggData.bggId);
+        if (existing) {
+          setMatches((prev) =>
+            prev.map((match, idx) => (idx === i ? { ...match, status: "skipped" } : match))
+          );
+          skipped++;
+          continue;
+        }
+
+        await createGame({
+          bggId: m.bggData.bggId,
+          name: m.bggData.name,
+          yearpublished: m.bggData.yearpublished,
+          minPlayers: m.bggData.minPlayers,
+          maxPlayers: m.bggData.maxPlayers,
+          playingTime: m.bggData.playingTime,
+          minPlayTime: m.bggData.minPlayTime,
+          maxPlayTime: m.bggData.maxPlayTime,
+          minAge: m.bggData.minAge,
+          averageWeight: m.bggData.averageWeight,
+          thumbnail: m.bggData.thumbnail,
+          image: m.bggData.image,
+          categories: m.bggData.categories,
+          mechanics: m.bggData.mechanics,
+          owned: true,
+        });
+        setMatches((prev) =>
+          prev.map((match, idx) => (idx === i ? { ...match, status: "imported" } : match))
+        );
+        imported++;
+      } catch {
+        setMatches((prev) =>
+          prev.map((match, idx) => (idx === i ? { ...match, status: "failed" } : match))
+        );
+        failed++;
+      }
+    }
+
+    setImportSummary({ imported, skipped, failed });
+    setImporting(false);
+  }
+
+  function handleReset() {
+    setImagePreview(null);
+    setMatches([]);
+    setError(null);
+    setImportSummary(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  // AI not configured
+  if (aiReady === false) {
+    return (
+      <div className="mt-5 rounded-2xl border border-amber/30 bg-amber-light p-5">
+        <div className="flex gap-3">
+          <svg className="h-5 w-5 flex-shrink-0 text-amber-dark mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <div>
+            <h3 className="text-sm font-semibold text-warm-900">AI-Provider einrichten</h3>
+            <p className="mt-1 text-sm text-warm-600">
+              Für den Foto-Scan brauchst du einen AI-API-Key. Google Gemini ist kostenlos.
+            </p>
+            <a
+              href="/settings"
+              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              AI-Provider in Einstellungen einrichten
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (aiReady === null) {
+    return (
+      <div className="mt-5 flex items-center gap-2.5 rounded-2xl border border-warm-200/80 bg-white p-5 text-sm text-warm-500">
+        <div className="spinner" />
+        Prüfe AI-Konfiguration...
+      </div>
+    );
+  }
+
+  const foundMatches = matches.filter((m) => m.status === "found" && m.bggData);
+  const selectedCount = matches.filter((m) => m.selected && m.status === "found" && m.bggData).length;
+
+  return (
+    <div className="mt-5 space-y-4">
+      {/* Upload area */}
+      <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+        <p className="mb-3 text-sm text-warm-500">
+          Fotografiere dein Spieleregal — die AI erkennt die Spiele und sucht sie auf BGG.
+        </p>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
+        {!imagePreview && !analyzing && (
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                if (fileInputRef.current) {
+                  fileInputRef.current.setAttribute("capture", "environment");
+                  fileInputRef.current.click();
+                }
+              }}
+              className="flex-1 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-warm-300 p-6 text-warm-500 transition-all hover:border-forest hover:text-forest hover:bg-forest-light/30"
+            >
+              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span className="text-sm font-medium">Foto aufnehmen</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (fileInputRef.current) {
+                  fileInputRef.current.removeAttribute("capture");
+                  fileInputRef.current.click();
+                }
+              }}
+              className="flex-1 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-warm-300 p-6 text-warm-500 transition-all hover:border-forest hover:text-forest hover:bg-forest-light/30"
+            >
+              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm font-medium">Bild auswählen</span>
+            </button>
+          </div>
+        )}
+
+        {imagePreview && (
+          <div className="relative">
+            <img
+              src={imagePreview}
+              alt="Foto der Spielesammlung"
+              className="w-full rounded-xl object-cover max-h-64"
+            />
+            {!analyzing && matches.length === 0 && (
+              <button
+                onClick={handleReset}
+                className="absolute top-2 right-2 rounded-full bg-warm-900/60 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-warm-900/80"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+
+        {analyzing && (
+          <div className="mt-4 flex items-center gap-3">
+            <div className="spinner" />
+            <span className="text-sm font-medium text-warm-600">{analyzeProgress}</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-3 rounded-xl bg-coral-light px-4 py-2.5 text-sm text-coral">
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* Results */}
+      {matches.length > 0 && !importing && !importSummary && (
+        <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-display text-base font-bold text-warm-900">
+              {matches.length} Spiel{matches.length !== 1 ? "e" : ""} erkannt
+            </h3>
+            {foundMatches.length > 1 && (
+              <button onClick={toggleAll} className="text-xs font-medium text-forest hover:text-forest-dark transition-colors">
+                {foundMatches.every((m) => m.selected) ? "Alle abwählen" : "Alle auswählen"}
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            {matches.map((m, i) => (
+              <div
+                key={`${m.recognized.name}-${i}`}
+                className={`flex items-center gap-3 rounded-xl p-3 transition-colors ${
+                  m.status === "found" ? "bg-forest-light/30" :
+                  m.status === "not_found" ? "bg-warm-50" :
+                  m.status === "searching" ? "bg-warm-50" :
+                  "bg-warm-50"
+                }`}
+              >
+                {/* Checkbox */}
+                {m.status === "found" && m.bggData && (
+                  <button
+                    onClick={() => toggleMatch(i)}
+                    className={`flex-shrink-0 h-5 w-5 rounded-md border-2 transition-all flex items-center justify-center ${
+                      m.selected
+                        ? "border-forest bg-forest text-white"
+                        : "border-warm-300 bg-white"
+                    }`}
+                  >
+                    {m.selected && (
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+
+                {/* Thumbnail */}
+                {m.bggData?.thumbnail ? (
+                  <div className="flex-shrink-0 h-12 w-12 rounded-lg overflow-hidden bg-warm-100">
+                    <img src={m.bggData.thumbnail} alt={m.bggData.name} className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="flex-shrink-0 h-12 w-12 rounded-lg bg-warm-100 flex items-center justify-center">
+                    {m.status === "searching" ? (
+                      <div className="spinner" />
+                    ) : (
+                      <svg className="h-5 w-5 text-warm-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                    )}
+                  </div>
+                )}
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-warm-900 truncate">
+                    {m.bggData?.name || m.recognized.name}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {m.bggData?.yearpublished && (
+                      <span className="text-xs text-warm-500">({m.bggData.yearpublished})</span>
+                    )}
+                    {m.status === "found" && m.recognized.name !== m.bggData?.name && (
+                      <span className="text-[10px] text-warm-400">AI: &quot;{m.recognized.name}&quot;</span>
+                    )}
+                    {m.status === "searching" && (
+                      <span className="text-xs text-warm-400">Suche auf BGG...</span>
+                    )}
+                    {m.status === "not_found" && (
+                      <span className="text-xs text-coral">Nicht auf BGG gefunden</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Confidence badge */}
+                <span className={`flex-shrink-0 rounded-lg px-2 py-0.5 text-[10px] font-semibold ${
+                  m.recognized.confidence === "high" ? "bg-forest-light text-forest" :
+                  m.recognized.confidence === "medium" ? "bg-amber-light text-amber-dark" :
+                  "bg-warm-100 text-warm-500"
+                }`}>
+                  {m.recognized.confidence === "high" ? "Sicher" :
+                   m.recognized.confidence === "medium" ? "Wahrscheinlich" :
+                   "Unsicher"}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Import button */}
+          {selectedCount > 0 && (
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={handleImport}
+                className="flex-1 rounded-xl bg-forest px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98] sm:flex-none"
+              >
+                {selectedCount} Spiel{selectedCount !== 1 ? "e" : ""} importieren
+              </button>
+              <button
+                onClick={handleReset}
+                className="rounded-xl bg-warm-100 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+              >
+                Neues Foto
+              </button>
+            </div>
+          )}
+
+          {selectedCount === 0 && foundMatches.length > 0 && (
+            <p className="mt-3 text-sm text-warm-400">Wähle mindestens ein Spiel zum Importieren aus.</p>
+          )}
+        </div>
+      )}
+
+      {/* Import progress */}
+      {importing && (
+        <div className="flex items-center gap-3 rounded-2xl border border-warm-200/80 bg-white p-5">
+          <div className="spinner" />
+          <span className="text-sm font-medium text-warm-600">Importiere Spiele...</span>
+        </div>
+      )}
+
+      {/* Import summary */}
+      {importSummary && (
+        <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+          <div className="flex flex-wrap gap-2.5 text-sm">
+            {importSummary.imported > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-xl bg-forest-light px-3.5 py-1.5 font-medium text-forest ring-1 ring-forest/20">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                {importSummary.imported} importiert
+              </span>
+            )}
+            {importSummary.skipped > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-xl bg-warm-50 px-3.5 py-1.5 font-medium text-warm-600 ring-1 ring-warm-200/60">
+                {importSummary.skipped} bereits vorhanden
+              </span>
+            )}
+            {importSummary.failed > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-xl bg-coral-light px-3.5 py-1.5 font-medium text-coral ring-1 ring-coral/20">
+                {importSummary.failed} fehlgeschlagen
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={handleReset}
+            className="mt-4 rounded-xl bg-forest px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
+          >
+            Weiteres Foto scannen
+          </button>
         </div>
       )}
     </div>
