@@ -117,16 +117,29 @@ async function aiPost(url: string, body: unknown, headers: Record<string, string
 
 // ─── Game Recognition ───
 
-const RECOGNITION_PROMPT = `Analyze this photo and identify all board games visible. Look at box spines, covers, and any visible game titles.
+const RECOGNITION_PROMPT = `You are an expert board game identifier. Analyze this photo of a board game collection/shelf carefully.
 
-For each game you can identify, provide:
-1. The exact English name as it appears on BoardGameGeek
-2. Your confidence level (high/medium/low)
+TASK: Identify every board game visible in the image. Look at:
+- Box spines (text on the side of boxes)
+- Box covers/fronts
+- Any visible game logos, artwork, or text
 
-IMPORTANT: Respond ONLY with a JSON array. No markdown, no explanation. Example:
-[{"name": "Catan", "confidence": "high"}, {"name": "Ticket to Ride", "confidence": "medium"}]
+RULES:
+1. Use the EXACT name as listed on BoardGameGeek (BGG). This is critical for search matching.
+   - "Catan" not "Die Siedler von Catan" or "Settlers of Catan"
+   - "Wingspan" not "Flügelschlag"
+   - "Ticket to Ride" not "Zug um Zug"
+   - "Pandemic" not "Pandemie"
+   - Use the PRIMARY English BGG name, even if the box shows a German/localized edition
+2. Only include games you can actually read or clearly recognize from the image. Do NOT guess.
+3. Set confidence to "high" only if you can clearly read/see the title.
+4. Set confidence to "medium" if you recognize the game by artwork/design but can't fully read the title.
+5. Set confidence to "low" if you're partially guessing based on box shape/color.
 
-If you cannot identify any games, respond with an empty array: []`;
+Respond ONLY with a valid JSON array. No markdown code fences, no explanation, no extra text.
+Example: [{"name": "Catan", "confidence": "high"}, {"name": "Ticket to Ride", "confidence": "medium"}]
+
+If no games are visible, respond: []`;
 
 export interface RecognizedGame {
   name: string;

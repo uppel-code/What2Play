@@ -748,6 +748,40 @@ function BggBulkTab() {
   );
 }
 
+// ─── BGG Name Matching Helper ───
+
+function findBestBggMatch(searchName: string, results: BggSearchResult[]): BggSearchResult {
+  const normalizedSearch = searchName.toLowerCase().trim();
+
+  // Exact match first
+  const exact = results.find((r) => r.name.toLowerCase().trim() === normalizedSearch);
+  if (exact) return exact;
+
+  // Starts-with match
+  const startsWith = results.find((r) =>
+    r.name.toLowerCase().startsWith(normalizedSearch) ||
+    normalizedSearch.startsWith(r.name.toLowerCase())
+  );
+  if (startsWith) return startsWith;
+
+  // Score-based: prefer shorter names that contain the search term (more likely the base game)
+  const scored = results
+    .map((r) => {
+      const name = r.name.toLowerCase();
+      let score = 0;
+      if (name.includes(normalizedSearch)) score += 10;
+      if (normalizedSearch.includes(name)) score += 8;
+      // Prefer shorter names (base game vs expansion)
+      score -= name.length * 0.05;
+      // Prefer newer games slightly
+      if (r.yearpublished && r.yearpublished > 2000) score += 1;
+      return { result: r, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.result || results[0];
+}
+
 // ─── Photo Scan Tab ───
 
 interface BggMatch {
@@ -825,16 +859,34 @@ function PhotoScanTab() {
         try {
           const results = await bggSearch(game.name);
           if (results.length > 0) {
-            // Fetch full details for best match
-            const details = await fetchBggThing(results[0].bggId);
+            // Find best match by name similarity
+            const bestMatch = findBestBggMatch(game.name, results);
+            const details = await fetchBggThing(bestMatch.bggId);
             setMatches((prev) =>
               prev.map((m, idx) =>
                 idx === i
-                  ? { ...m, bggResult: results[0], bggData: details, status: "found" }
+                  ? { ...m, bggResult: bestMatch, bggData: details, status: "found" }
                   : m
               )
             );
           } else {
+            // Try a simplified search (first word or shorter query)
+            const simpleName = game.name.split(/[:\-–]/)[0].trim();
+            if (simpleName !== game.name && simpleName.length >= 3) {
+              const retryResults = await bggSearch(simpleName);
+              if (retryResults.length > 0) {
+                const bestMatch = findBestBggMatch(game.name, retryResults);
+                const details = await fetchBggThing(bestMatch.bggId);
+                setMatches((prev) =>
+                  prev.map((m, idx) =>
+                    idx === i
+                      ? { ...m, bggResult: bestMatch, bggData: details, status: "found" }
+                      : m
+                  )
+                );
+                continue;
+              }
+            }
             setMatches((prev) =>
               prev.map((m, idx) => (idx === i ? { ...m, status: "not_found" } : m))
             );

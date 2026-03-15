@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import GameCard from "@/components/GameCard";
 import FilterBar from "@/components/FilterBar";
 import type { Game, GameFilters } from "@/types/game";
@@ -12,11 +12,7 @@ export default function CollectionPage() {
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
 
-  useEffect(() => {
-    loadGames();
-  }, []);
-
-  async function loadGames() {
+  const loadGames = useCallback(async () => {
     try {
       setSeeding(true);
       await ensureSeedData();
@@ -28,7 +24,30 @@ export default function CollectionPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadGames();
+  }, [loadGames]);
+
+  // Re-fetch when page becomes visible (e.g. navigating back from /add)
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        loadGames();
+      }
+    }
+    function handleFocus() {
+      loadGames();
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [loadGames]);
 
   const filteredGames = useMemo(() => {
     return games.filter((game) => {

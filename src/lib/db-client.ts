@@ -41,8 +41,6 @@ db.version(1).stores({
 // ─── CRUD Operations ───
 
 export async function getAllGames(): Promise<Game[]> {
-  const games = await db.games.where("owned").equals(1).sortBy("name");
-  // Dexie stores booleans but indexed as 0/1, filter to be safe
   return db.games.orderBy("name").filter((g) => g.owned === true).toArray();
 }
 
