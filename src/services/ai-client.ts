@@ -12,9 +12,11 @@ import { CapacitorHttp } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 
 export type AiProvider = "gemini" | "openai" | "claude";
+export type GameLanguage = "de" | "en";
 
 const AI_PROVIDER_KEY = "ai_provider";
 const AI_API_KEY_KEY = "ai_api_key";
+const GAME_LANGUAGE_KEY = "game_language";
 
 export interface AiConfig {
   provider: AiProvider;
@@ -44,6 +46,17 @@ export async function clearAiConfig(): Promise<void> {
 export async function isAiConfigured(): Promise<boolean> {
   const config = await getAiConfig();
   return config !== null && config.apiKey.length > 0;
+}
+
+// ─── Language Setting ───
+
+export async function getGameLanguage(): Promise<GameLanguage> {
+  const { value } = await Preferences.get({ key: GAME_LANGUAGE_KEY });
+  return (value as GameLanguage) || "de";
+}
+
+export async function setGameLanguage(language: GameLanguage): Promise<void> {
+  await Preferences.set({ key: GAME_LANGUAGE_KEY, value: language });
 }
 
 // ─── Image Compression ───
@@ -303,6 +316,143 @@ async function callClaude(apiKey: string, base64Image: string): Promise<string> 
 
   const parsed = JSON.parse(data);
   return parsed?.content?.[0]?.text || "[]";
+}
+
+// ─── Verification (2-Step AI Check) ───
+
+export interface VerificationResult {
+  isMatch: boolean;
+  confidence: "high" | "medium" | "low";
+  suggestedName?: string;
+  reason?: string;
+}
+
+export async function verifyGameMatch(
+  recognizedName: string,
+  bggName: string,
+  bggThumbnail: string | null
+): Promise<VerificationResult> {
+  const config = await getAiConfig();
+  if (!config) throw new Error("AI_NOT_CONFIGURED");
+
+  const language = await getGameLanguage();
+  
+  const prompt = `You are a board game expert. Determine if these refer to the SAME board game:
+
+RECOGNIZED FROM PHOTO: "${recognizedName}"
+BGG DATABASE RESULT: "${bggName}"
+
+Consider:
+1. Localized editions (German/English/French names are often different)
+2. Subtitle variations (e.g. "Catan" vs "Die Siedler von Catan")
+3. Edition names (e.g. "Ticket to Ride: Europe" vs "Zug um Zug: Europa")
+4. Common abbreviations
+
+Common German ↔ English mappings:
+- Zug um Zug = Ticket to Ride
+- Die Siedler von Catan = Catan
+- Flügelschlag = Wingspan
+- Die Quacksalber von Quedlinburg = The Quacks of Quedlinburg
+- Pandemie = Pandemic
+- Azul = Azul (same)
+- Codenames = Codenames (same)
+
+Respond ONLY with valid JSON (no markdown):
+{
+  "isMatch": true/false,
+  "confidence": "high"/"medium"/"low",
+  "suggestedName": "${language === "de" ? "German name if known" : "English name"}",
+  "reason": "brief explanation"
+}`;
+
+  let responseText: string;
+
+  switch (config.provider) {
+    case "gemini":
+      responseText = await callGeminiText(config.apiKey, prompt);
+      break;
+    case "openai":
+      responseText = await callOpenAIText(config.apiKey, prompt);
+      break;
+    case "claude":
+      responseText = await callClaudeText(config.apiKey, prompt);
+      break;
+    default:
+      throw new Error("UNKNOWN_PROVIDER");
+  }
+
+  return parseVerificationResponse(responseText);
+}
+
+async function callGeminiText(apiKey: string, prompt: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+  const body = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
+  };
+
+  const { status, data } = await aiPost(url, body, {});
+  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+
+  const parsed = JSON.parse(data);
+  return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+}
+
+async function callOpenAIText(apiKey: string, prompt: string): Promise<string> {
+  const url = "https://api.openai.com/v1/chat/completions";
+
+  const body = {
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    max_tokens: 512,
+    temperature: 0.1,
+  };
+
+  const { status, data } = await aiPost(url, body, { Authorization: `Bearer ${apiKey}` });
+  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+
+  const parsed = JSON.parse(data);
+  return parsed?.choices?.[0]?.message?.content || "{}";
+}
+
+async function callClaudeText(apiKey: string, prompt: string): Promise<string> {
+  const url = "https://api.anthropic.com/v1/messages";
+
+  const body = {
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 512,
+    messages: [{ role: "user", content: prompt }],
+  };
+
+  const { status, data } = await aiPost(url, body, {
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+    "anthropic-dangerous-direct-browser-access": "true",
+  });
+  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+
+  const parsed = JSON.parse(data);
+  return parsed?.content?.[0]?.text || "{}";
+}
+
+function parseVerificationResponse(text: string): VerificationResult {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  }
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      isMatch: parsed.isMatch === true,
+      confidence: ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "low",
+      suggestedName: parsed.suggestedName || undefined,
+      reason: parsed.reason || undefined,
+    };
+  } catch {
+    return { isMatch: false, confidence: "low", reason: "Failed to parse AI response" };
+  }
 }
 
 // ─── Response Parsing ───

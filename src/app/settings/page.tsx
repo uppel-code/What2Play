@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { getBggToken, setBggToken, isBggConfigured } from "@/services/bgg-client";
-import { getAiConfig, setAiConfig, clearAiConfig, isAiConfigured } from "@/services/ai-client";
-import type { AiProvider } from "@/services/ai-client";
+import { getAiConfig, setAiConfig, clearAiConfig, isAiConfigured, getGameLanguage, setGameLanguage } from "@/services/ai-client";
+import type { AiProvider, GameLanguage } from "@/services/ai-client";
 import { getGameCount } from "@/lib/db-client";
 
 export default function SettingsPage() {
@@ -22,6 +22,9 @@ export default function SettingsPage() {
 
   const [gameCount, setGameCount] = useState<number>(0);
 
+  const [gameLanguage, setGameLang] = useState<GameLanguage>("de");
+  const [langSaved, setLangSaved] = useState(false);
+
   useEffect(() => {
     async function load() {
       const t = await getBggToken();
@@ -37,6 +40,7 @@ export default function SettingsPage() {
         setSavedAiKey(ac.apiKey);
       }
       setAiConfigured(await isAiConfigured());
+      setGameLang(await getGameLanguage());
     }
     load();
   }, []);
@@ -88,6 +92,13 @@ export default function SettingsPage() {
     openai: "OpenAI",
     claude: "Anthropic Claude",
   };
+
+  async function handleLanguageChange(lang: GameLanguage) {
+    setGameLang(lang);
+    await setGameLanguage(lang);
+    setLangSaved(true);
+    setTimeout(() => setLangSaved(false), 2000);
+  }
 
   return (
     <div className="space-y-6">
@@ -259,6 +270,63 @@ export default function SettingsPage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Game Language */}
+      <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-light">
+            <svg className="h-5 w-5 text-forest" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="font-display text-lg font-bold text-warm-900">Spielenamen-Sprache</h2>
+            <p className="text-sm text-warm-500">
+              Bevorzugte Sprache für Spielenamen beim Import
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-warm-50 p-4 mb-4">
+          <p className="text-sm text-warm-600 leading-relaxed">
+            Viele Spiele haben unterschiedliche Namen auf Deutsch und Englisch
+            (z.B. &quot;Flügelschlag&quot; vs &quot;Wingspan&quot;). Die AI wird versuchen,
+            den Namen in deiner bevorzugten Sprache zu verwenden.
+          </p>
+        </div>
+
+        <div className="flex gap-1.5 rounded-xl bg-warm-100 p-1">
+          <button
+            onClick={() => handleLanguageChange("de")}
+            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+              gameLanguage === "de"
+                ? "bg-white text-warm-900 shadow-sm"
+                : "text-warm-500 hover:text-warm-700"
+            }`}
+          >
+            🇩🇪 Deutsch
+          </button>
+          <button
+            onClick={() => handleLanguageChange("en")}
+            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+              gameLanguage === "en"
+                ? "bg-white text-warm-900 shadow-sm"
+                : "text-warm-500 hover:text-warm-700"
+            }`}
+          >
+            🇬🇧 English
+          </button>
+        </div>
+
+        {langSaved && (
+          <div className="mt-3 flex items-center gap-2 rounded-xl bg-forest-light px-4 py-2.5 text-sm font-medium text-forest">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Sprache gespeichert!
+          </div>
+        )}
       </div>
 
       {/* App Info */}

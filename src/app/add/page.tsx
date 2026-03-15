@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import type { BggGameData, BggSearchResult } from "@/types/game";
 import { createGame, getGameByBggId } from "@/lib/db-client";
 import { searchBgg as bggSearch, fetchBggThing, fetchBggCollection, isBggConfigured } from "@/services/bgg-client";
-import { isAiConfigured, recognizeGamesFromImage, compressImage } from "@/services/ai-client";
-import type { RecognizedGame } from "@/services/ai-client";
+import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch, getGameLanguage } from "@/services/ai-client";
+import type { RecognizedGame, VerificationResult } from "@/services/ai-client";
 
 type ActiveTab = "bgg-search" | "bgg-collection" | "bgg-bulk" | "photo-scan" | "manual";
 
@@ -755,10 +755,12 @@ interface PhotoScanResult {
   recognized: RecognizedGame;
   bggId: number;
   name: string;
-  status: "pending" | "fetching" | "found" | "not_found" | "imported" | "skipped" | "failed";
+  status: "pending" | "fetching" | "verifying" | "found" | "mismatch" | "not_found" | "imported" | "skipped" | "failed";
   thumbnail?: string | null;
   yearpublished?: number | null;
   selected: boolean;
+  verification?: VerificationResult;
+  bggOriginalName?: string;
 }
 
 function PhotoScanTab() {
@@ -831,7 +833,7 @@ function PhotoScanTab() {
         setError(`${withoutIds.length} Spiel${withoutIds.length !== 1 ? "e" : ""} ohne BGG-ID übersprungen: ${withoutIds.map((r) => r.name).join(", ")}`);
       }
 
-      // Verify each BGG ID via fetchBggThing (same as bulk import)
+      // Verify each BGG ID via fetchBggThing + AI verification
       setAnalyzeProgress(`Verifiziere ${withIds.length} Spiele auf BGG...`);
 
       for (let i = 0; i < withIds.length; i++) {
@@ -844,19 +846,50 @@ function PhotoScanTab() {
         try {
           const data = await fetchBggThing(game.bggId!);
           if (data) {
+            // Step 2: AI verification - check if BGG result matches recognized game
             setResults((prev) =>
-              prev.map((r, idx) =>
-                idx === i
-                  ? {
-                      ...r,
-                      name: data.name,
-                      thumbnail: data.thumbnail,
-                      yearpublished: data.yearpublished,
-                      status: "found",
-                    }
-                  : r
-              )
+              prev.map((r, idx) => (idx === i ? { ...r, status: "verifying", bggOriginalName: data.name } : r))
             );
+
+            const verification = await verifyGameMatch(game.name, data.name, data.thumbnail);
+            
+            if (verification.isMatch) {
+              // Use suggested name if available (respects language setting)
+              const finalName = verification.suggestedName || data.name;
+              setResults((prev) =>
+                prev.map((r, idx) =>
+                  idx === i
+                    ? {
+                        ...r,
+                        name: finalName,
+                        thumbnail: data.thumbnail,
+                        yearpublished: data.yearpublished,
+                        status: "found",
+                        verification,
+                        bggOriginalName: data.name,
+                      }
+                    : r
+                )
+              );
+            } else {
+              // Mismatch - AI says this is NOT the same game
+              setResults((prev) =>
+                prev.map((r, idx) =>
+                  idx === i
+                    ? {
+                        ...r,
+                        name: game.name, // Keep original recognized name
+                        thumbnail: data.thumbnail,
+                        yearpublished: data.yearpublished,
+                        status: "mismatch",
+                        verification,
+                        bggOriginalName: data.name,
+                        selected: false, // Don't auto-select mismatches
+                      }
+                    : r
+                )
+              );
+            }
           } else {
             setResults((prev) =>
               prev.map((r, idx) => (idx === i ? { ...r, status: "not_found" } : r))
@@ -893,17 +926,17 @@ function PhotoScanTab() {
   }
 
   function toggleAll() {
-    const found = results.filter((r) => r.status === "found");
-    const allSelected = found.every((r) => r.selected);
+    const selectable = results.filter((r) => r.status === "found" || r.status === "mismatch");
+    const allSelected = selectable.every((r) => r.selected);
     setResults((prev) =>
       prev.map((r) =>
-        r.status === "found" ? { ...r, selected: !allSelected } : r
+        r.status === "found" || r.status === "mismatch" ? { ...r, selected: !allSelected } : r
       )
     );
   }
 
   async function handleImport() {
-    const toImport = results.filter((r) => r.selected && r.status === "found");
+    const toImport = results.filter((r) => r.selected && (r.status === "found" || r.status === "mismatch"));
     if (toImport.length === 0) return;
 
     setImporting(true);
@@ -914,7 +947,7 @@ function PhotoScanTab() {
 
     for (let i = 0; i < results.length; i++) {
       const r = results[i];
-      if (!r.selected || r.status !== "found") continue;
+      if (!r.selected || (r.status !== "found" && r.status !== "mismatch")) continue;
 
       try {
         const existing = await getGameByBggId(r.bggId);
@@ -1015,8 +1048,8 @@ function PhotoScanTab() {
     );
   }
 
-  const foundResults = results.filter((r) => r.status === "found");
-  const selectedCount = results.filter((r) => r.selected && r.status === "found").length;
+  const foundResults = results.filter((r) => r.status === "found" || r.status === "mismatch");
+  const selectedCount = results.filter((r) => r.selected && (r.status === "found" || r.status === "mismatch")).length;
 
   return (
     <div className="mt-5 space-y-4">
@@ -1124,12 +1157,13 @@ function PhotoScanTab() {
                 key={`${r.bggId}-${i}`}
                 className={`flex items-center gap-3 rounded-xl p-3 transition-colors ${
                   r.status === "found" ? "bg-forest-light/30" :
+                  r.status === "mismatch" ? "bg-amber-light/30" :
                   r.status === "not_found" ? "bg-warm-50" :
                   "bg-warm-50"
                 }`}
               >
                 {/* Checkbox */}
-                {r.status === "found" && (
+                {(r.status === "found" || r.status === "mismatch") && (
                   <button
                     onClick={() => toggleResult(i)}
                     className={`flex-shrink-0 h-5 w-5 rounded-md border-2 transition-all flex items-center justify-center ${
@@ -1153,7 +1187,7 @@ function PhotoScanTab() {
                   </div>
                 ) : (
                   <div className="flex-shrink-0 h-12 w-12 rounded-lg bg-warm-100 flex items-center justify-center">
-                    {r.status === "fetching" || r.status === "pending" ? (
+                    {r.status === "fetching" || r.status === "pending" || r.status === "verifying" ? (
                       <div className="spinner" />
                     ) : (
                       <svg className="h-5 w-5 text-warm-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -1166,27 +1200,42 @@ function PhotoScanTab() {
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-warm-900 truncate">{r.name}</p>
+                  {r.status === "mismatch" && r.bggOriginalName && (
+                    <p className="text-xs text-amber-dark truncate">BGG: {r.bggOriginalName}</p>
+                  )}
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[10px] font-mono text-warm-400">BGG #{r.bggId}</span>
                     {r.yearpublished && (
                       <span className="text-xs text-warm-500">({r.yearpublished})</span>
                     )}
-                    {r.status === "fetching" && (
-                      <span className="text-xs text-warm-400">Verifiziere...</span>
+                    {(r.status === "fetching" || r.status === "verifying") && (
+                      <span className="text-xs text-warm-400">
+                        {r.status === "verifying" ? "AI prüft..." : "Lade..."}
+                      </span>
                     )}
                     {r.status === "not_found" && (
                       <span className="text-xs text-coral">ID nicht gefunden</span>
                     )}
+                    {r.status === "mismatch" && (
+                      <span className="text-xs text-amber-dark">⚠️ Unsicher</span>
+                    )}
                   </div>
+                  {r.verification?.reason && r.status === "mismatch" && (
+                    <p className="text-[10px] text-warm-500 mt-1 truncate">{r.verification.reason}</p>
+                  )}
                 </div>
 
-                {/* Confidence badge */}
+                {/* Status badge */}
                 <span className={`flex-shrink-0 rounded-lg px-2 py-0.5 text-[10px] font-semibold ${
+                  r.status === "found" ? "bg-forest-light text-forest" :
+                  r.status === "mismatch" ? "bg-amber-light text-amber-dark" :
                   r.recognized.confidence === "high" ? "bg-forest-light text-forest" :
                   r.recognized.confidence === "medium" ? "bg-amber-light text-amber-dark" :
                   "bg-warm-100 text-warm-500"
                 }`}>
-                  {r.recognized.confidence === "high" ? "Sicher" :
+                  {r.status === "found" ? "✓ Verifiziert" :
+                   r.status === "mismatch" ? "⚠️ Prüfen" :
+                   r.recognized.confidence === "high" ? "Sicher" :
                    r.recognized.confidence === "medium" ? "Wahrscheinlich" :
                    "Unsicher"}
                 </span>
