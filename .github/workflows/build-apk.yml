@@ -47,3 +47,19 @@ jobs:
         with:
           name: what2play-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ steps.sha.outputs.short }}
+          name: What2Play Build ${{ steps.sha.outputs.short }}
+          body: |
+            Automatischer Build vom Commit ${{ github.sha }}
+
+            Lade die APK direkt herunter — kein Entpacken nötig.
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          make_latest: true
