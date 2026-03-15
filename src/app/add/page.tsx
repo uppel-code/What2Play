@@ -807,37 +807,64 @@ function PhotoScanTab() {
         return;
       }
 
-      // Filter: only games where AI returned a BGG ID
+      // Split: games with ID vs without
       const withIds = recognized.filter((r) => r.bggId !== null && r.bggId > 0);
       const withoutIds = recognized.filter((r) => !r.bggId || r.bggId <= 0);
 
-      if (withIds.length === 0) {
-        setError(
-          `AI hat ${recognized.length} Spiel${recognized.length !== 1 ? "e" : ""} erkannt, konnte aber keine BGG-IDs zuordnen. Versuche ein deutlicheres Foto.`
-        );
-        setAnalyzing(false);
-        return;
-      }
-
-      // Initialize results
-      const initialResults: PhotoScanResult[] = withIds.map((r) => ({
+      // Initialize results - include ALL games
+      const initialResults: PhotoScanResult[] = recognized.map((r) => ({
         recognized: r,
-        bggId: r.bggId!,
+        bggId: r.bggId && r.bggId > 0 ? r.bggId : 0,
         name: r.name,
         status: "pending" as const,
         selected: true,
       }));
       setResults(initialResults);
 
+      // First: search BGG for games without IDs
       if (withoutIds.length > 0) {
-        setError(`${withoutIds.length} Spiel${withoutIds.length !== 1 ? "e" : ""} ohne BGG-ID übersprungen: ${withoutIds.map((r) => r.name).join(", ")}`);
+        setAnalyzeProgress(`Suche ${withoutIds.length} Spiele auf BGG...`);
+        
+        for (let i = 0; i < recognized.length; i++) {
+          const game = recognized[i];
+          if (game.bggId && game.bggId > 0) continue; // Skip games with IDs
+          
+          setResults((prev) =>
+            prev.map((r, idx) => (idx === i ? { ...r, status: "fetching" } : r))
+          );
+          
+          try {
+            const searchResults = await bggSearch(game.name);
+            if (searchResults.length > 0) {
+              // Take first result as best match
+              const bestMatch = searchResults[0];
+              setResults((prev) =>
+                prev.map((r, idx) =>
+                  idx === i ? { ...r, bggId: bestMatch.bggId, name: bestMatch.name } : r
+                )
+              );
+              // Update in withIds for verification
+              game.bggId = bestMatch.bggId;
+            } else {
+              setResults((prev) =>
+                prev.map((r, idx) => (idx === i ? { ...r, status: "not_found", selected: false } : r))
+              );
+            }
+          } catch {
+            setResults((prev) =>
+              prev.map((r, idx) => (idx === i ? { ...r, status: "not_found", selected: false } : r))
+            );
+          }
+        }
       }
 
-      // Verify each BGG ID via fetchBggThing + AI verification
-      setAnalyzeProgress(`Verifiziere ${withIds.length} Spiele auf BGG...`);
+      // Verify ALL games with BGG IDs
+      const toVerify = recognized.filter((r) => r.bggId && r.bggId > 0);
+      setAnalyzeProgress(`Verifiziere ${toVerify.length} Spiele...`);
 
-      for (let i = 0; i < withIds.length; i++) {
-        const game = withIds[i];
+      for (let i = 0; i < recognized.length; i++) {
+        const game = recognized[i];
+        if (!game.bggId || game.bggId <= 0) continue; // Skip games without IDs
 
         setResults((prev) =>
           prev.map((r, idx) => (idx === i ? { ...r, status: "fetching" } : r))

@@ -130,57 +130,24 @@ async function aiPost(url: string, body: unknown, headers: Record<string, string
 
 // ─── Game Recognition ───
 
-const RECOGNITION_PROMPT = `You are an expert board game identifier with deep knowledge of BoardGameGeek (BGG).
+const RECOGNITION_PROMPT = `You are an expert board game identifier. Identify ALL board games visible in this photo.
 
-TASK: Identify every board game visible in this photo and provide the exact BGG ID for each game.
+LOOK AT: Box spines, covers, logos, artwork, any readable text.
 
-Look at:
-- Box spines (text on the side of boxes)
-- Box covers/fronts
-- Any visible game logos, artwork, or text
+COMMON BGG IDs (use these!):
+Catan=13, Carcassonne=822, Ticket to Ride=9209, Pandemic=30549, Wingspan=266192, Ark Nova=342942, Azul=230802, 7 Wonders=68448, Codenames=178900, Dominion=36218, Terraforming Mars=167791, Spirit Island=162886, Agricola=31260, Dixit=39856, The Crew=284083, Everdell=199792, Root=237182, Scythe=169786, Brass Birmingham=224517, Great Western Trail=193738, Gloomhaven=174430, Quacks of Quedlinburg=244521, Cascadia=295947, Dorfromantik=370591, Die Crew=284083, MicroMacro=318977, Pictures=284108, Scout=291453, Splendor=148228, Century Spice Road=209685, Mysterium=181304, Takenoko=70919, Kingdomino=204583, Patchwork=163412
 
-RULES:
-1. You MUST provide the correct BoardGameGeek numeric ID (bggId) for each game.
-   These are the IDs from the URL: boardgamegeek.com/boardgame/{ID}/game-name
-   Common examples:
-   - Catan = 13
-   - Carcassonne = 822
-   - Ticket to Ride = 9209
-   - Pandemic = 30549
-   - Wingspan = 266192
-   - Ark Nova = 342942
-   - Azul = 230802
-   - 7 Wonders = 68448
-   - Codenames = 178900
-   - Dominion = 36218
-   - Terraforming Mars = 167791
-   - Spirit Island = 162886
-   - Agricola = 31260
-   - Puerto Rico = 3076
-   - Dixit = 39856
-   - The Crew = 284083
-   - Everdell = 199792
-   - Root = 237182
-   - Scythe = 169786
-   - Brass: Birmingham = 224517
-   - Great Western Trail = 193738
-   - Gloomhaven = 174430
-   - Die Quacksalber von Quedlinburg / The Quacks of Quedlinburg = 244521
-   - Flügelschlag = Wingspan = 266192
-   - Zug um Zug = Ticket to Ride = 9209
-   - Die Siedler von Catan = Catan = 13
-   - Pandemie = Pandemic = 30549
-2. Recognize LOCALIZED editions: German, French, etc. Map them to the PRIMARY BGG entry.
-3. Only include games you can actually read or clearly recognize. Do NOT guess.
-4. Set confidence to "high" only if you can clearly read/see the title AND are sure of the BGG ID.
-5. Set confidence to "medium" if you recognize the game but are less sure about the exact BGG ID.
-6. Set confidence to "low" if you're partially guessing.
-7. If you're not sure about a BGG ID, still provide your best guess — the app will verify it.
+GERMAN NAMES: Flügelschlag=266192, Zug um Zug=9209, Die Siedler von Catan=13, Pandemie=30549, Die Quacksalber=244521
 
-Respond ONLY with a valid JSON array. No markdown code fences, no explanation, no extra text.
-Example: [{"name": "Catan", "bggId": 13, "confidence": "high"}, {"name": "Ticket to Ride", "bggId": 9209, "confidence": "medium"}]
+CRITICAL: You MUST provide a bggId for EVERY game. If unsure, give your best guess - the app will verify.
+Set bggId to 0 ONLY if you truly cannot guess (the app will search BGG by name).
 
-If no games are visible, respond: []`;
+OUTPUT FORMAT - JSON array only, no markdown:
+[{"name":"Game Name","bggId":12345,"confidence":"high"},{"name":"Another","bggId":0,"confidence":"low"}]
+
+confidence: "high"=certain, "medium"=likely, "low"=guess
+
+If no games visible: []`;
 
 export interface RecognizedGame {
   name: string;
