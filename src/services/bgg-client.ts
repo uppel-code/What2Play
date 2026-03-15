@@ -13,16 +13,18 @@ import { Preferences } from "@capacitor/preferences";
 
 const BGG_API_BASE = "https://boardgamegeek.com/xmlapi2";
 const TOKEN_KEY = "bgg_api_token";
+const DEFAULT_TOKEN = "2cf7ef15-eecb-4d64-9668-a87fa1911f61";
 
 // ─── Token Management ───
 
 export async function getBggToken(): Promise<string | null> {
   if (Capacitor.isNativePlatform()) {
     const { value } = await Preferences.get({ key: TOKEN_KEY });
-    return value || null;
+    // Return saved token, or fall back to default
+    return value || DEFAULT_TOKEN;
   }
-  // In browser mode, token is handled by the API proxy
-  return null;
+  // In browser mode, also return default token for direct use
+  return DEFAULT_TOKEN;
 }
 
 export async function setBggToken(token: string): Promise<void> {
@@ -30,39 +32,29 @@ export async function setBggToken(token: string): Promise<void> {
 }
 
 export async function isBggConfigured(): Promise<boolean> {
-  if (Capacitor.isNativePlatform()) {
-    const token = await getBggToken();
-    return !!token;
-  }
-  // In browser dev mode, check the proxy status endpoint
-  try {
-    const res = await fetch("/api/bgg/status");
-    const data = await res.json();
-    return data.configured;
-  } catch {
-    return false;
-  }
+  const token = await getBggToken();
+  return !!token;
 }
 
 // ─── HTTP Helper ───
 
 async function bggFetch(url: string): Promise<{ status: number; data: string }> {
-  if (Capacitor.isNativePlatform()) {
-    const token = await getBggToken();
-    if (!token) throw new Error("BGG_API_TOKEN_MISSING");
+  const token = await getBggToken();
+  if (!token) throw new Error("BGG_API_TOKEN_MISSING");
 
+  if (Capacitor.isNativePlatform()) {
     const response = await CapacitorHttp.request({
       url,
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
     });
-
     return { status: response.status, data: response.data };
   }
 
-  // Browser mode: use proxy
-  const proxyUrl = url.replace(BGG_API_BASE, "/api/bgg/proxy");
-  const response = await fetch(proxyUrl);
+  // Browser mode: direct fetch with token (works for same-origin or CORS-enabled endpoints)
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return { status: response.status, data: await response.text() };
 }
 
@@ -76,26 +68,12 @@ export interface BggImportResult {
 }
 
 export async function searchBgg(query: string): Promise<BggSearchResult[]> {
-  if (Capacitor.isNativePlatform()) {
-    const url = `${BGG_API_BASE}/search?query=${encodeURIComponent(query)}&type=boardgame`;
-    try {
-      const { status, data } = await bggFetch(url);
-      if (status === 401) throw new Error("BGG_API_TOKEN_INVALID");
-      if (status !== 200) return [];
-      return parseSearchXml(data);
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith("BGG_API_TOKEN")) throw error;
-      return [];
-    }
-  }
-
-  // Browser dev mode: use existing API route
+  const url = `${BGG_API_BASE}/search?query=${encodeURIComponent(query)}&type=boardgame`;
   try {
-    const res = await fetch(`/api/bgg/search?q=${encodeURIComponent(query)}`);
-    if (res.status === 503) throw new Error("BGG_API_TOKEN_MISSING");
-    if (res.status === 401) throw new Error("BGG_API_TOKEN_INVALID");
-    if (!res.ok) return [];
-    return await res.json();
+    const { status, data } = await bggFetch(url);
+    if (status === 401) throw new Error("BGG_API_TOKEN_INVALID");
+    if (status !== 200) return [];
+    return parseSearchXml(data);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("BGG_API_TOKEN")) throw error;
     return [];
@@ -103,26 +81,12 @@ export async function searchBgg(query: string): Promise<BggSearchResult[]> {
 }
 
 export async function fetchBggThing(bggId: number): Promise<BggGameData | null> {
-  if (Capacitor.isNativePlatform()) {
-    const url = `${BGG_API_BASE}/thing?id=${bggId}&stats=1`;
-    try {
-      const { status, data } = await bggFetch(url);
-      if (status === 401) throw new Error("BGG_API_TOKEN_INVALID");
-      if (status !== 200) return null;
-      return parseThingXml(data);
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith("BGG_API_TOKEN")) throw error;
-      return null;
-    }
-  }
-
-  // Browser dev mode
+  const url = `${BGG_API_BASE}/thing?id=${bggId}&stats=1`;
   try {
-    const res = await fetch(`/api/bgg/thing?id=${bggId}`);
-    if (res.status === 503) throw new Error("BGG_API_TOKEN_MISSING");
-    if (res.status === 401) throw new Error("BGG_API_TOKEN_INVALID");
-    if (!res.ok) return null;
-    return await res.json();
+    const { status, data } = await bggFetch(url);
+    if (status === 401) throw new Error("BGG_API_TOKEN_INVALID");
+    if (status !== 200) return null;
+    return parseThingXml(data);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("BGG_API_TOKEN")) throw error;
     return null;
@@ -130,34 +94,14 @@ export async function fetchBggThing(bggId: number): Promise<BggGameData | null> 
 }
 
 export async function fetchBggCollection(username: string): Promise<BggImportResult> {
-  if (Capacitor.isNativePlatform()) {
-    const url = `${BGG_API_BASE}/collection?username=${encodeURIComponent(username)}&own=1&stats=1&subtype=boardgame`;
-    try {
-      const { status, data } = await bggFetch(url);
-      if (status === 202) return { success: false, games: [], errors: [], queued: true };
-      if (status === 401) return { success: false, games: [], errors: ["BGG_API_TOKEN_INVALID"], queued: false };
-      if (status !== 200) return { success: false, games: [], errors: [`BGG API status ${status}`], queued: false };
-      const games = parseCollectionXml(data);
-      return { success: true, games, errors: [], queued: false };
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith("BGG_API_TOKEN")) throw error;
-      return { success: false, games: [], errors: [String(error)], queued: false };
-    }
-  }
-
-  // Browser dev mode
+  const url = `${BGG_API_BASE}/collection?username=${encodeURIComponent(username)}&own=1&stats=1&subtype=boardgame`;
   try {
-    const res = await fetch("/api/bgg", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username }),
-    });
-    if (res.status === 503) throw new Error("BGG_API_TOKEN_MISSING");
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      return { success: false, games: [], errors: [data.error || `Status ${res.status}`], queued: false };
-    }
-    return await res.json();
+    const { status, data } = await bggFetch(url);
+    if (status === 202) return { success: false, games: [], errors: [], queued: true };
+    if (status === 401) return { success: false, games: [], errors: ["BGG_API_TOKEN_INVALID"], queued: false };
+    if (status !== 200) return { success: false, games: [], errors: [`BGG API status ${status}`], queued: false };
+    const games = parseCollectionXml(data);
+    return { success: true, games, errors: [], queued: false };
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("BGG_API_TOKEN")) throw error;
     return { success: false, games: [], errors: [String(error)], queued: false };
