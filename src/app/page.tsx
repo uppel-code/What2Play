@@ -5,6 +5,7 @@ import GameCard from "@/components/GameCard";
 import FilterBar from "@/components/FilterBar";
 import type { Game, GameFilters } from "@/types/game";
 import { getAllGames } from "@/lib/db-client";
+import Link from "next/link";
 
 export default function CollectionPage() {
   const [games, setGames] = useState<Game[]>([]);
@@ -88,6 +89,17 @@ export default function CollectionPage() {
           <h1 className="font-display text-3xl font-bold tracking-tight text-warm-900">Meine Sammlung</h1>
           <p className="mt-1 text-sm font-medium text-warm-500">{games.length} Spiele in deinem Regal</p>
         </div>
+        {games.length > 0 && (
+          <Link
+            href="/manage"
+            className="flex items-center gap-1.5 rounded-xl bg-warm-100 px-3 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            Verwalten
+          </Link>
+        )}
       </div>
 
       <FilterBar filters={filters} onChange={setFilters} />
