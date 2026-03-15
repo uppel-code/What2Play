@@ -3,11 +3,11 @@
 import { useState, useEffect, useMemo } from "react";
 import GameCard from "@/components/GameCard";
 import FilterBar from "@/components/FilterBar";
-import type { Game, GameParsed, GameFilters } from "@/types/game";
-import { parseGame } from "@/types/game";
+import type { Game, GameFilters } from "@/types/game";
+import { getAllGames, ensureSeedData } from "@/lib/db-client";
 
 export default function CollectionPage() {
-  const [games, setGames] = useState<GameParsed[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
   const [filters, setFilters] = useState<GameFilters>({});
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
@@ -18,19 +18,11 @@ export default function CollectionPage() {
 
   async function loadGames() {
     try {
-      const res = await fetch("/api/games");
-      const data: Game[] = await res.json();
-
-      if (data.length === 0) {
-        setSeeding(true);
-        await fetch("/api/seed", { method: "POST" });
-        const res2 = await fetch("/api/games");
-        const data2: Game[] = await res2.json();
-        setGames(data2.map(parseGame));
-        setSeeding(false);
-      } else {
-        setGames(data.map(parseGame));
-      }
+      setSeeding(true);
+      await ensureSeedData();
+      setSeeding(false);
+      const data = await getAllGames();
+      setGames(data);
     } catch (error) {
       console.error("Failed to load games:", error);
     } finally {

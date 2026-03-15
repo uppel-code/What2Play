@@ -66,8 +66,8 @@ export interface Game {
   averageWeight: number;
   thumbnail: string | null;
   image: string | null;
-  categories: string;  // JSON string in DB, parsed in app
-  mechanics: string;   // JSON string in DB, parsed in app
+  categories: string[];
+  mechanics: string[];
   // Ownership
   owned: boolean;
   shelfLocation: string | null;
@@ -75,37 +75,12 @@ export interface Game {
   favorite: boolean;
   // User meta
   notes: string | null;
-  tags: string; // JSON string in DB
+  tags: string[];
   // Timestamps
   createdAt: string;
   updatedAt: string;
 }
 
-// ─── Parsed Game (after JSON fields are parsed) ───
-
-export interface GameParsed extends Omit<Game, "categories" | "mechanics" | "tags"> {
-  categories: string[];
-  mechanics: string[];
-  tags: string[];
-}
-
-export function parseGame(game: Game): GameParsed {
-  return {
-    ...game,
-    categories: safeJsonParse(game.categories, []),
-    mechanics: safeJsonParse(game.mechanics, []),
-    tags: safeJsonParse(game.tags, []),
-  };
-}
-
-function safeJsonParse<T>(value: string | null, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
 
 // ─── Filter & Recommendation Types ───
 
@@ -125,7 +100,7 @@ export interface TodayPlayParams {
   preferNewcomers?: boolean;
 }
 
-export interface ScoredGame extends GameParsed {
+export interface ScoredGame extends Game {
   score: number;
   scoreBreakdown: ScoreBreakdown;
 }

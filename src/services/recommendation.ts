@@ -1,4 +1,5 @@
-import type { GameParsed, TodayPlayParams, ScoredGame, ScoreBreakdown } from "@/types/game";
+import type { Game, TodayPlayParams, ScoredGame, ScoreBreakdown } from "@/types/game";
+// Note: Game now has string[] for categories/mechanics/tags (no more GameParsed)
 
 /**
  * Recommendation Engine for "Heute spielen" mode.
@@ -22,7 +23,7 @@ const WEIGHTS = {
 } as const;
 
 export function recommendGames(
-  games: GameParsed[],
+  games: Game[],
   params: TodayPlayParams,
 ): ScoredGame[] {
   const scored = games
@@ -34,7 +35,7 @@ export function recommendGames(
   return scored;
 }
 
-function scoreGame(game: GameParsed, params: TodayPlayParams): ScoredGame {
+function scoreGame(game: Game, params: TodayPlayParams): ScoredGame {
   const breakdown: ScoreBreakdown = {
     playerFit: calcPlayerFit(game, params.playerCount),
     timeFit: calcTimeFit(game, params.availableTime),
@@ -56,7 +57,7 @@ function scoreGame(game: GameParsed, params: TodayPlayParams): ScoredGame {
 }
 
 /** Player count: full points if exact match, partial if in range, 0 if outside */
-function calcPlayerFit(game: GameParsed, playerCount: number): number {
+function calcPlayerFit(game: Game, playerCount: number): number {
   if (playerCount < game.minPlayers || playerCount > game.maxPlayers) {
     return 0; // Hard filter: not playable with this count
   }
@@ -74,7 +75,7 @@ function calcPlayerFit(game: GameParsed, playerCount: number): number {
 }
 
 /** Time: full points if game fits in available time, scaled down if close */
-function calcTimeFit(game: GameParsed, availableTime: number): number {
+function calcTimeFit(game: Game, availableTime: number): number {
   const gameTime = game.playingTime;
 
   if (gameTime <= 0) return WEIGHTS.timeFit * 0.5; // Unknown duration: neutral
@@ -94,7 +95,7 @@ function calcTimeFit(game: GameParsed, availableTime: number): number {
 }
 
 /** Complexity: full points if exact match, drops off with distance */
-function calcComplexityFit(game: GameParsed, desired: number): number {
+function calcComplexityFit(game: Game, desired: number): number {
   const diff = Math.abs(game.averageWeight - desired);
 
   if (diff <= 0.3) return WEIGHTS.complexityFit;
@@ -105,12 +106,12 @@ function calcComplexityFit(game: GameParsed, desired: number): number {
 }
 
 /** Favorite: small bonus */
-function calcFavoriteBonus(game: GameParsed): number {
+function calcFavoriteBonus(game: Game): number {
   return game.favorite ? WEIGHTS.favoriteBonus : 0;
 }
 
 /** Long not played: bonus if >30 days since last play */
-function calcLastPlayedBonus(game: GameParsed): number {
+function calcLastPlayedBonus(game: Game): number {
   if (!game.lastPlayed) return WEIGHTS.lastPlayedBonus; // Never played = bonus
   const daysSince = daysBetween(new Date(game.lastPlayed), new Date());
   if (daysSince > 90) return WEIGHTS.lastPlayedBonus;
@@ -119,7 +120,7 @@ function calcLastPlayedBonus(game: GameParsed): number {
 }
 
 /** Tag bonus: if newcomer preference matches tags */
-function calcTagBonus(game: GameParsed, params: TodayPlayParams): number {
+function calcTagBonus(game: Game, params: TodayPlayParams): number {
   if (params.preferNewcomers && game.tags.includes("good-with-newcomers")) {
     return WEIGHTS.tagBonus;
   }

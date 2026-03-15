@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { BggGameData, BggSearchResult } from "@/types/game";
+import { createGame, getGameByBggId } from "@/lib/db-client";
+import { searchBgg as bggSearch, fetchBggThing, fetchBggCollection, isBggConfigured } from "@/services/bgg-client";
 
 type ActiveTab = "bgg-search" | "bgg-collection" | "bgg-bulk" | "manual";
 
@@ -99,12 +101,8 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
   const [bggConfigured, setBggConfigured] = useState<boolean | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Check BGG token status on mount
   useEffect(() => {
-    fetch("/api/bgg/status")
-      .then((res) => res.json())
-      .then((data) => setBggConfigured(data.configured))
-      .catch(() => setBggConfigured(false));
+    isBggConfigured().then(setBggConfigured).catch(() => setBggConfigured(false));
   }, []);
 
   const doSearch = useCallback(async (searchQuery: string) => {
@@ -116,24 +114,18 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
     setSearching(true);
     setError(null);
     try {
-      const res = await fetch(`/api/bgg/search?q=${encodeURIComponent(searchQuery.trim())}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setSearchResults(data as BggSearchResult[]);
-        }
-      } else {
-        const data = await res.json();
-        if (data.error === "BGG_API_TOKEN_MISSING") {
+      const results = await bggSearch(searchQuery.trim());
+      setSearchResults(results);
+    } catch (err) {
+      if (err instanceof Error) {
+        if (err.message === "BGG_API_TOKEN_MISSING") {
           setBggConfigured(false);
-        } else if (data.error === "BGG_API_TOKEN_INVALID") {
-          setError("Der BGG API-Token ist ungültig oder abgelaufen. Bitte prüfe BGG_API_TOKEN in .env.local.");
+        } else if (err.message === "BGG_API_TOKEN_INVALID") {
+          setError("Der BGG API-Token ist ungültig oder abgelaufen.");
         } else {
           setError("BGG-Suche fehlgeschlagen. Bitte versuche es erneut.");
         }
       }
-    } catch {
-      setError("Verbindung zu BGG fehlgeschlagen.");
     } finally {
       setSearching(false);
     }
@@ -155,13 +147,11 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
     setError(null);
 
     try {
-      const res = await fetch(`/api/bgg/thing?id=${result.bggId}`);
-      if (res.ok) {
-        const data: BggGameData = await res.json();
+      const data = await fetchBggThing(result.bggId);
+      if (data) {
         setSelectedGame(data);
       } else {
-        const data = await res.json();
-        setError(data.message || "Spieldetails konnten nicht geladen werden.");
+        setError("Spieldetails konnten nicht geladen werden.");
       }
     } catch {
       setError("Verbindung zu BGG fehlgeschlagen.");
@@ -174,10 +164,8 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
     if (!selectedGame) return;
 
     setSaving(true);
-    const res = await fetch("/api/games", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const game = await createGame({
         bggId: selectedGame.bggId,
         name: selectedGame.name,
         yearpublished: selectedGame.yearpublished,
@@ -193,15 +181,10 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
         categories: selectedGame.categories,
         mechanics: selectedGame.mechanics,
         owned: true,
-      }),
-    });
-
-    if (res.ok) {
-      const game = await res.json();
-      router.push(`/game/${game.id}`);
-    } else {
-      const err = await res.json();
-      if (err.error?.includes?.("UNIQUE constraint")) {
+      });
+      router.push(`/game?id=${game.id}`);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("ConstraintError")) {
         setError("Dieses Spiel ist bereits in deiner Sammlung.");
       }
       setSaving(false);
@@ -215,12 +198,10 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
     setError(null);
   }
 
-  // Show setup banner if token is not configured
   if (bggConfigured === false) {
     return <BggSetupBanner />;
   }
 
-  // Still checking token status
   if (bggConfigured === null) {
     return (
       <div className="mt-5 flex items-center gap-2.5 rounded-2xl border border-warm-200/80 bg-white p-5 text-sm text-warm-500">
@@ -232,7 +213,6 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
 
   return (
     <div className="mt-5 space-y-4">
-      {/* Search input */}
       <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
         <p className="mb-3 text-sm text-warm-500">
           Suche nach einem Brettspiel auf BoardGameGeek – alle Infos werden automatisch übernommen.
@@ -262,7 +242,6 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
           )}
         </div>
 
-        {/* Loading indicator */}
         {searching && (
           <div className="mt-3 flex items-center gap-2.5 text-sm text-warm-500">
             <div className="spinner" />
@@ -270,14 +249,12 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
           </div>
         )}
 
-        {/* Error message */}
         {error && (
           <div className="mt-3 rounded-xl bg-coral-light px-4 py-2.5 text-sm text-coral">
             {error}
           </div>
         )}
 
-        {/* Search results dropdown */}
         {searchResults.length > 0 && !selectedGame && (
           <div className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-warm-200 bg-white">
             {searchResults.map((result) => (
@@ -297,13 +274,11 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
           </div>
         )}
 
-        {/* No results */}
         {!searching && !error && searchResults.length === 0 && query.length >= 2 && !selectedGame && (
           <p className="mt-3 text-sm text-warm-400">Keine Ergebnisse auf BGG gefunden.</p>
         )}
       </div>
 
-      {/* Loading details */}
       {loadingDetails && (
         <div className="flex items-center gap-3 rounded-2xl border border-warm-200/80 bg-white p-6">
           <div className="spinner" />
@@ -311,18 +286,12 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
         </div>
       )}
 
-      {/* Selected game preview + confirm */}
       {selectedGame && (
         <div className="rounded-2xl border border-forest/20 bg-forest-light p-5">
           <div className="flex gap-4">
-            {/* Thumbnail */}
             <div className="h-28 w-28 flex-shrink-0 overflow-hidden rounded-xl bg-warm-100">
               {selectedGame.thumbnail ? (
-                <img
-                  src={selectedGame.thumbnail}
-                  alt={selectedGame.name}
-                  className="h-full w-full object-cover"
-                />
+                <img src={selectedGame.thumbnail} alt={selectedGame.name} className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full items-center justify-center text-warm-300">
                   <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -332,7 +301,6 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
               )}
             </div>
 
-            {/* Details */}
             <div className="flex-1 min-w-0">
               <h3 className="font-display text-lg font-bold text-warm-900">{selectedGame.name}</h3>
               {selectedGame.yearpublished && (
@@ -348,7 +316,6 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
                 )}
               </div>
 
-              {/* Categories */}
               {selectedGame.categories.length > 0 && (
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
                   {selectedGame.categories.slice(0, 5).map((cat) => (
@@ -364,7 +331,6 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
             </div>
           </div>
 
-          {/* Action buttons */}
           <div className="mt-4 flex gap-2">
             <button
               onClick={handleAddGame}
@@ -435,10 +401,7 @@ function BggCollectionTab({ router }: { router: ReturnType<typeof useRouter> }) 
   const [bggConfigured, setBggConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch("/api/bgg/status")
-      .then((res) => res.json())
-      .then((data) => setBggConfigured(data.configured))
-      .catch(() => setBggConfigured(false));
+    isBggConfigured().then(setBggConfigured).catch(() => setBggConfigured(false));
   }, []);
 
   async function handleImport() {
@@ -448,32 +411,62 @@ function BggCollectionTab({ router }: { router: ReturnType<typeof useRouter> }) 
     setStatus("Lade Sammlung von BGG...");
     setStatusType("info");
 
-    const res = await fetch("/api/bgg", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: bggUsername }),
-    });
+    try {
+      const result = await fetchBggCollection(bggUsername);
 
-    const data = await res.json();
-
-    if (data.error === "BGG_API_TOKEN_MISSING") {
-      setBggConfigured(false);
-      setStatus(null);
-    } else if (data.error === "BGG_API_TOKEN_INVALID") {
-      setStatus("BGG API-Token ist ungültig oder abgelaufen. Bitte prüfe BGG_API_TOKEN in .env.local.");
-      setStatusType("error");
-    } else if (res.status === 202) {
-      setStatus("BGG bereitet deine Sammlung vor. Bitte versuche es in 10 Sekunden erneut.");
-      setStatusType("info");
-    } else if (res.ok) {
-      setStatus(`${data.imported} Spiele importiert, ${data.skipped} übersprungen.`);
-      setStatusType("success");
-      if (data.imported > 0) {
-        setTimeout(() => router.push("/"), 1500);
+      if (result.errors.includes("BGG_API_TOKEN_INVALID")) {
+        setStatus("BGG API-Token ist ungültig oder abgelaufen.");
+        setStatusType("error");
+      } else if (result.queued) {
+        setStatus("BGG bereitet deine Sammlung vor. Bitte versuche es in 10 Sekunden erneut.");
+        setStatusType("info");
+      } else if (result.success && result.games.length > 0) {
+        let imported = 0;
+        let skipped = 0;
+        for (const game of result.games) {
+          const existing = await getGameByBggId(game.bggId);
+          if (existing) {
+            skipped++;
+            continue;
+          }
+          await createGame({
+            bggId: game.bggId,
+            name: game.name,
+            yearpublished: game.yearpublished,
+            minPlayers: game.minPlayers,
+            maxPlayers: game.maxPlayers,
+            playingTime: game.playingTime,
+            minPlayTime: game.minPlayTime,
+            maxPlayTime: game.maxPlayTime,
+            minAge: game.minAge,
+            averageWeight: game.averageWeight,
+            thumbnail: game.thumbnail,
+            image: game.image,
+            categories: game.categories,
+            mechanics: game.mechanics,
+            owned: true,
+          });
+          imported++;
+        }
+        setStatus(`${imported} Spiele importiert, ${skipped} übersprungen.`);
+        setStatusType("success");
+        if (imported > 0) {
+          setTimeout(() => router.push("/"), 1500);
+        }
+      } else if (result.errors.length > 0) {
+        setStatus(`Fehler: ${result.errors[0]}`);
+        setStatusType("error");
+      } else {
+        setStatus("Keine Spiele gefunden.");
+        setStatusType("info");
       }
-    } else {
-      setStatus(`Fehler: ${data.error || "Import fehlgeschlagen"}`);
-      setStatusType("error");
+    } catch (err) {
+      if (err instanceof Error && err.message === "BGG_API_TOKEN_MISSING") {
+        setBggConfigured(false);
+      } else {
+        setStatus("Import fehlgeschlagen.");
+        setStatusType("error");
+      }
     }
 
     setImporting(false);
@@ -542,13 +535,9 @@ function BggBulkTab() {
   const [bggConfigured, setBggConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch("/api/bgg/status")
-      .then((res) => res.json())
-      .then((data) => setBggConfigured(data.configured))
-      .catch(() => setBggConfigured(false));
+    isBggConfigured().then(setBggConfigured).catch(() => setBggConfigured(false));
   }, []);
 
-  // Parse IDs from input
   const parsedIds = input
     .split(/[\s,;]+/)
     .map((s) => parseInt(s.trim(), 10))
@@ -563,31 +552,59 @@ function BggBulkTab() {
     setResults(null);
     setSummary(null);
 
+    const bulkResults: BulkResult[] = [];
+    let imported = 0;
+    let skipped = 0;
+    let failed = 0;
+
     try {
-      const res = await fetch("/api/bgg/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: uniqueIds }),
-      });
+      for (const bggId of uniqueIds) {
+        // Check duplicate
+        const existing = await getGameByBggId(bggId);
+        if (existing) {
+          bulkResults.push({ bggId, name: existing.name, status: "skipped" });
+          skipped++;
+          continue;
+        }
 
-      const data = await res.json();
-
-      if (data.error === "BGG_API_TOKEN_MISSING") {
-        setBggConfigured(false);
-        return;
+        try {
+          const data = await fetchBggThing(bggId);
+          if (data) {
+            await createGame({
+              bggId: data.bggId,
+              name: data.name,
+              yearpublished: data.yearpublished,
+              minPlayers: data.minPlayers,
+              maxPlayers: data.maxPlayers,
+              playingTime: data.playingTime,
+              minPlayTime: data.minPlayTime,
+              maxPlayTime: data.maxPlayTime,
+              minAge: data.minAge,
+              averageWeight: data.averageWeight,
+              thumbnail: data.thumbnail,
+              image: data.image,
+              categories: data.categories,
+              mechanics: data.mechanics,
+              owned: true,
+            });
+            bulkResults.push({ bggId, name: data.name, status: "imported" });
+            imported++;
+          } else {
+            bulkResults.push({ bggId, name: `ID ${bggId}`, status: "failed" });
+            failed++;
+          }
+        } catch (err) {
+          if (err instanceof Error && err.message.startsWith("BGG_API_TOKEN")) {
+            setError(err.message === "BGG_API_TOKEN_MISSING" ? "BGG Token fehlt." : "BGG Token ungültig.");
+            break;
+          }
+          bulkResults.push({ bggId, name: `ID ${bggId}`, status: "failed" });
+          failed++;
+        }
       }
-      if (data.error === "BGG_API_TOKEN_INVALID") {
-        setError("BGG API-Token ist ungültig oder abgelaufen.");
-        return;
-      }
 
-      if (!res.ok && !data.results) {
-        setError(data.error || "Import fehlgeschlagen");
-        return;
-      }
-
-      setResults(data.results || []);
-      setSummary({ imported: data.imported, skipped: data.skipped, failed: data.failed });
+      setResults(bulkResults);
+      setSummary({ imported, skipped, failed });
     } catch {
       setError("Verbindung fehlgeschlagen.");
     } finally {
@@ -669,10 +686,8 @@ function BggBulkTab() {
         )}
       </div>
 
-      {/* Results */}
       {summary && results && (
         <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
-          {/* Summary */}
           <div className="flex flex-wrap gap-2.5 text-sm">
             {summary.imported > 0 && (
               <span className="inline-flex items-center gap-1.5 rounded-xl bg-forest-light px-3.5 py-1.5 font-medium text-forest ring-1 ring-forest/20">
@@ -692,7 +707,6 @@ function BggBulkTab() {
             )}
           </div>
 
-          {/* Detail list */}
           <div className="mt-4 max-h-64 overflow-y-auto rounded-xl border border-warm-100">
             {results.map((r, i) => (
               <div
@@ -745,20 +759,14 @@ function ManualTab({ router }: { router: ReturnType<typeof useRouter> }) {
     if (!form.name.trim()) return;
 
     setSaving(true);
-    const res = await fetch("/api/games", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const game = await createGame({
         ...form,
         thumbnail: form.thumbnail || null,
         owned: true,
-      }),
-    });
-
-    if (res.ok) {
-      const game = await res.json();
-      router.push(`/game/${game.id}`);
-    } else {
+      });
+      router.push(`/game?id=${game.id}`);
+    } catch {
       setSaving(false);
     }
   }
@@ -782,65 +790,28 @@ function ManualTab({ router }: { router: ReturnType<typeof useRouter> }) {
 
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Min. Spieler">
-          <input
-            type="number"
-            min={1}
-            value={form.minPlayers}
-            onChange={(e) => setForm({ ...form, minPlayers: Number(e.target.value) })}
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
-          />
+          <input type="number" min={1} value={form.minPlayers} onChange={(e) => setForm({ ...form, minPlayers: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
         <FormField label="Max. Spieler">
-          <input
-            type="number"
-            min={1}
-            value={form.maxPlayers}
-            onChange={(e) => setForm({ ...form, maxPlayers: Number(e.target.value) })}
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
-          />
+          <input type="number" min={1} value={form.maxPlayers} onChange={(e) => setForm({ ...form, maxPlayers: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Spieldauer (Min)">
-          <input
-            type="number"
-            min={1}
-            value={form.playingTime}
-            onChange={(e) => setForm({ ...form, playingTime: Number(e.target.value) })}
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
-          />
+          <input type="number" min={1} value={form.playingTime} onChange={(e) => setForm({ ...form, playingTime: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
         <FormField label="Mindestalter">
-          <input
-            type="number"
-            min={0}
-            value={form.minAge}
-            onChange={(e) => setForm({ ...form, minAge: Number(e.target.value) })}
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
-          />
+          <input type="number" min={0} value={form.minAge} onChange={(e) => setForm({ ...form, minAge: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Komplexität (1–5)">
-          <input
-            type="number"
-            min={1}
-            max={5}
-            step={0.1}
-            value={form.averageWeight}
-            onChange={(e) => setForm({ ...form, averageWeight: Number(e.target.value) })}
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
-          />
+          <input type="number" min={1} max={5} step={0.1} value={form.averageWeight} onChange={(e) => setForm({ ...form, averageWeight: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
         <FormField label="Erscheinungsjahr">
-          <input
-            type="number"
-            value={form.yearpublished ?? ""}
-            onChange={(e) => setForm({ ...form, yearpublished: e.target.value ? Number(e.target.value) : null })}
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
-          />
+          <input type="number" value={form.yearpublished ?? ""} onChange={(e) => setForm({ ...form, yearpublished: e.target.value ? Number(e.target.value) : null })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
       </div>
 

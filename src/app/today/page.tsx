@@ -3,11 +3,11 @@
 import { useState, useEffect } from "react";
 import ScoredGameCard from "@/components/ScoredGameCard";
 import { recommendGames } from "@/services/recommendation";
-import type { Game, GameParsed, TodayPlayParams, ScoredGame } from "@/types/game";
-import { parseGame } from "@/types/game";
+import type { Game, TodayPlayParams, ScoredGame } from "@/types/game";
+import { getAllGames } from "@/lib/db-client";
 
 export default function TodayPage() {
-  const [games, setGames] = useState<GameParsed[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
   const [results, setResults] = useState<ScoredGame[] | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -19,9 +19,8 @@ export default function TodayPage() {
   });
 
   useEffect(() => {
-    fetch("/api/games")
-      .then((res) => res.json())
-      .then((data: Game[]) => setGames(data.map(parseGame)))
+    getAllGames()
+      .then((data) => setGames(data))
       .finally(() => setLoading(false));
   }, []);
 

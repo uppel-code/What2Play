@@ -13,7 +13,7 @@ export default function ScoredGameCard({ game, rank }: ScoredGameCardProps) {
 
   return (
     <Link
-      href={`/game/${game.id}`}
+      href={`/game?id=${game.id}`}
       className="card-hover group flex gap-4 rounded-2xl border border-warm-200/80 bg-white p-4"
     >
       {/* Rank badge */}

@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import type { GameParsed } from "@/types/game";
+import type { Game } from "@/types/game";
 
 interface GameCardProps {
-  game: GameParsed;
+  game: Game;
 }
 
 function complexityLabel(weight: number): string {
@@ -24,7 +24,7 @@ function complexityColor(weight: number): string {
 export default function GameCard({ game }: GameCardProps) {
   return (
     <Link
-      href={`/game/${game.id}`}
+      href={`/game?id=${game.id}`}
       className="card-hover group block overflow-hidden rounded-2xl border border-warm-200/80 bg-white"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-warm-100">
