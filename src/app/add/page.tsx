@@ -748,48 +748,17 @@ function BggBulkTab() {
   );
 }
 
-// ─── BGG Name Matching Helper ───
-
-function findBestBggMatch(searchName: string, results: BggSearchResult[]): BggSearchResult {
-  const normalizedSearch = searchName.toLowerCase().trim();
-
-  // Exact match first
-  const exact = results.find((r) => r.name.toLowerCase().trim() === normalizedSearch);
-  if (exact) return exact;
-
-  // Starts-with match
-  const startsWith = results.find((r) =>
-    r.name.toLowerCase().startsWith(normalizedSearch) ||
-    normalizedSearch.startsWith(r.name.toLowerCase())
-  );
-  if (startsWith) return startsWith;
-
-  // Score-based: prefer shorter names that contain the search term (more likely the base game)
-  const scored = results
-    .map((r) => {
-      const name = r.name.toLowerCase();
-      let score = 0;
-      if (name.includes(normalizedSearch)) score += 10;
-      if (normalizedSearch.includes(name)) score += 8;
-      // Prefer shorter names (base game vs expansion)
-      score -= name.length * 0.05;
-      // Prefer newer games slightly
-      if (r.yearpublished && r.yearpublished > 2000) score += 1;
-      return { result: r, score };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  return scored[0]?.result || results[0];
-}
-
 // ─── Photo Scan Tab ───
+// AI returns BGG IDs directly → we use fetchBggThing (same as bulk import)
 
-interface BggMatch {
+interface PhotoScanResult {
   recognized: RecognizedGame;
-  bggResult: BggSearchResult | null;
-  bggData: BggGameData | null;
+  bggId: number;
+  name: string;
+  status: "pending" | "fetching" | "found" | "not_found" | "imported" | "skipped" | "failed";
+  thumbnail?: string | null;
+  yearpublished?: number | null;
   selected: boolean;
-  status: "pending" | "searching" | "found" | "not_found" | "imported" | "skipped" | "failed";
 }
 
 function PhotoScanTab() {
@@ -797,7 +766,7 @@ function PhotoScanTab() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeProgress, setAnalyzeProgress] = useState("");
-  const [matches, setMatches] = useState<BggMatch[]>([]);
+  const [results, setResults] = useState<PhotoScanResult[]>([]);
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -812,7 +781,7 @@ function PhotoScanTab() {
     if (!file) return;
 
     setError(null);
-    setMatches([]);
+    setResults([]);
     setImportSummary(null);
 
     // Show preview
@@ -836,64 +805,66 @@ function PhotoScanTab() {
         return;
       }
 
-      // Initialize matches
-      const initialMatches: BggMatch[] = recognized.map((r) => ({
+      // Filter: only games where AI returned a BGG ID
+      const withIds = recognized.filter((r) => r.bggId !== null && r.bggId > 0);
+      const withoutIds = recognized.filter((r) => !r.bggId || r.bggId <= 0);
+
+      if (withIds.length === 0) {
+        setError(
+          `AI hat ${recognized.length} Spiel${recognized.length !== 1 ? "e" : ""} erkannt, konnte aber keine BGG-IDs zuordnen. Versuche ein deutlicheres Foto.`
+        );
+        setAnalyzing(false);
+        return;
+      }
+
+      // Initialize results
+      const initialResults: PhotoScanResult[] = withIds.map((r) => ({
         recognized: r,
-        bggResult: null,
-        bggData: null,
-        selected: true,
+        bggId: r.bggId!,
+        name: r.name,
         status: "pending" as const,
+        selected: true,
       }));
-      setMatches(initialMatches);
+      setResults(initialResults);
 
-      // Search BGG for each recognized game
-      setAnalyzeProgress(`Suche ${recognized.length} Spiele auf BGG...`);
+      if (withoutIds.length > 0) {
+        setError(`${withoutIds.length} Spiel${withoutIds.length !== 1 ? "e" : ""} ohne BGG-ID übersprungen: ${withoutIds.map((r) => r.name).join(", ")}`);
+      }
 
-      for (let i = 0; i < recognized.length; i++) {
-        const game = recognized[i];
+      // Verify each BGG ID via fetchBggThing (same as bulk import)
+      setAnalyzeProgress(`Verifiziere ${withIds.length} Spiele auf BGG...`);
 
-        setMatches((prev) =>
-          prev.map((m, idx) => (idx === i ? { ...m, status: "searching" } : m))
+      for (let i = 0; i < withIds.length; i++) {
+        const game = withIds[i];
+
+        setResults((prev) =>
+          prev.map((r, idx) => (idx === i ? { ...r, status: "fetching" } : r))
         );
 
         try {
-          const results = await bggSearch(game.name);
-          if (results.length > 0) {
-            // Find best match by name similarity
-            const bestMatch = findBestBggMatch(game.name, results);
-            const details = await fetchBggThing(bestMatch.bggId);
-            setMatches((prev) =>
-              prev.map((m, idx) =>
+          const data = await fetchBggThing(game.bggId!);
+          if (data) {
+            setResults((prev) =>
+              prev.map((r, idx) =>
                 idx === i
-                  ? { ...m, bggResult: bestMatch, bggData: details, status: "found" }
-                  : m
+                  ? {
+                      ...r,
+                      name: data.name,
+                      thumbnail: data.thumbnail,
+                      yearpublished: data.yearpublished,
+                      status: "found",
+                    }
+                  : r
               )
             );
           } else {
-            // Try a simplified search (first word or shorter query)
-            const simpleName = game.name.split(/[:\-–]/)[0].trim();
-            if (simpleName !== game.name && simpleName.length >= 3) {
-              const retryResults = await bggSearch(simpleName);
-              if (retryResults.length > 0) {
-                const bestMatch = findBestBggMatch(game.name, retryResults);
-                const details = await fetchBggThing(bestMatch.bggId);
-                setMatches((prev) =>
-                  prev.map((m, idx) =>
-                    idx === i
-                      ? { ...m, bggResult: bestMatch, bggData: details, status: "found" }
-                      : m
-                  )
-                );
-                continue;
-              }
-            }
-            setMatches((prev) =>
-              prev.map((m, idx) => (idx === i ? { ...m, status: "not_found" } : m))
+            setResults((prev) =>
+              prev.map((r, idx) => (idx === i ? { ...r, status: "not_found" } : r))
             );
           }
         } catch {
-          setMatches((prev) =>
-            prev.map((m, idx) => (idx === i ? { ...m, status: "not_found" } : m))
+          setResults((prev) =>
+            prev.map((r, idx) => (idx === i ? { ...r, status: "not_found" } : r))
           );
         }
       }
@@ -915,24 +886,24 @@ function PhotoScanTab() {
     }
   }
 
-  function toggleMatch(index: number) {
-    setMatches((prev) =>
-      prev.map((m, i) => (i === index ? { ...m, selected: !m.selected } : m))
+  function toggleResult(index: number) {
+    setResults((prev) =>
+      prev.map((r, i) => (i === index ? { ...r, selected: !r.selected } : r))
     );
   }
 
   function toggleAll() {
-    const foundMatches = matches.filter((m) => m.status === "found" && m.bggData);
-    const allSelected = foundMatches.every((m) => m.selected);
-    setMatches((prev) =>
-      prev.map((m) =>
-        m.status === "found" && m.bggData ? { ...m, selected: !allSelected } : m
+    const found = results.filter((r) => r.status === "found");
+    const allSelected = found.every((r) => r.selected);
+    setResults((prev) =>
+      prev.map((r) =>
+        r.status === "found" ? { ...r, selected: !allSelected } : r
       )
     );
   }
 
   async function handleImport() {
-    const toImport = matches.filter((m) => m.selected && m.bggData && m.status === "found");
+    const toImport = results.filter((r) => r.selected && r.status === "found");
     if (toImport.length === 0) return;
 
     setImporting(true);
@@ -941,44 +912,53 @@ function PhotoScanTab() {
     let skipped = 0;
     let failed = 0;
 
-    for (let i = 0; i < matches.length; i++) {
-      const m = matches[i];
-      if (!m.selected || !m.bggData || m.status !== "found") continue;
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (!r.selected || r.status !== "found") continue;
 
       try {
-        const existing = await getGameByBggId(m.bggData.bggId);
+        const existing = await getGameByBggId(r.bggId);
         if (existing) {
-          setMatches((prev) =>
-            prev.map((match, idx) => (idx === i ? { ...match, status: "skipped" } : match))
+          setResults((prev) =>
+            prev.map((res, idx) => (idx === i ? { ...res, status: "skipped" } : res))
           );
           skipped++;
           continue;
         }
 
-        await createGame({
-          bggId: m.bggData.bggId,
-          name: m.bggData.name,
-          yearpublished: m.bggData.yearpublished,
-          minPlayers: m.bggData.minPlayers,
-          maxPlayers: m.bggData.maxPlayers,
-          playingTime: m.bggData.playingTime,
-          minPlayTime: m.bggData.minPlayTime,
-          maxPlayTime: m.bggData.maxPlayTime,
-          minAge: m.bggData.minAge,
-          averageWeight: m.bggData.averageWeight,
-          thumbnail: m.bggData.thumbnail,
-          image: m.bggData.image,
-          categories: m.bggData.categories,
-          mechanics: m.bggData.mechanics,
-          owned: true,
-        });
-        setMatches((prev) =>
-          prev.map((match, idx) => (idx === i ? { ...match, status: "imported" } : match))
-        );
-        imported++;
+        // Fetch full details and create game (same as bulk import)
+        const data = await fetchBggThing(r.bggId);
+        if (data) {
+          await createGame({
+            bggId: data.bggId,
+            name: data.name,
+            yearpublished: data.yearpublished,
+            minPlayers: data.minPlayers,
+            maxPlayers: data.maxPlayers,
+            playingTime: data.playingTime,
+            minPlayTime: data.minPlayTime,
+            maxPlayTime: data.maxPlayTime,
+            minAge: data.minAge,
+            averageWeight: data.averageWeight,
+            thumbnail: data.thumbnail,
+            image: data.image,
+            categories: data.categories,
+            mechanics: data.mechanics,
+            owned: true,
+          });
+          setResults((prev) =>
+            prev.map((res, idx) => (idx === i ? { ...res, status: "imported" } : res))
+          );
+          imported++;
+        } else {
+          setResults((prev) =>
+            prev.map((res, idx) => (idx === i ? { ...res, status: "failed" } : res))
+          );
+          failed++;
+        }
       } catch {
-        setMatches((prev) =>
-          prev.map((match, idx) => (idx === i ? { ...match, status: "failed" } : match))
+        setResults((prev) =>
+          prev.map((res, idx) => (idx === i ? { ...res, status: "failed" } : res))
         );
         failed++;
       }
@@ -990,7 +970,7 @@ function PhotoScanTab() {
 
   function handleReset() {
     setImagePreview(null);
-    setMatches([]);
+    setResults([]);
     setError(null);
     setImportSummary(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -1035,15 +1015,15 @@ function PhotoScanTab() {
     );
   }
 
-  const foundMatches = matches.filter((m) => m.status === "found" && m.bggData);
-  const selectedCount = matches.filter((m) => m.selected && m.status === "found" && m.bggData).length;
+  const foundResults = results.filter((r) => r.status === "found");
+  const selectedCount = results.filter((r) => r.selected && r.status === "found").length;
 
   return (
     <div className="mt-5 space-y-4">
       {/* Upload area */}
       <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
         <p className="mb-3 text-sm text-warm-500">
-          Fotografiere dein Spieleregal — die AI erkennt die Spiele und sucht sie auf BGG.
+          Fotografiere dein Spieleregal — die AI erkennt die Spiele und ermittelt die BGG-IDs zum direkten Import.
         </p>
 
         <input
@@ -1097,7 +1077,7 @@ function PhotoScanTab() {
               alt="Foto der Spielesammlung"
               className="w-full rounded-xl object-cover max-h-64"
             />
-            {!analyzing && matches.length === 0 && (
+            {!analyzing && results.length === 0 && !error && (
               <button
                 onClick={handleReset}
                 className="absolute top-2 right-2 rounded-full bg-warm-900/60 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-warm-900/80"
@@ -1125,41 +1105,40 @@ function PhotoScanTab() {
       </div>
 
       {/* Results */}
-      {matches.length > 0 && !importing && !importSummary && (
+      {results.length > 0 && !importing && !importSummary && (
         <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display text-base font-bold text-warm-900">
-              {matches.length} Spiel{matches.length !== 1 ? "e" : ""} erkannt
+              {results.length} Spiel{results.length !== 1 ? "e" : ""} erkannt
             </h3>
-            {foundMatches.length > 1 && (
+            {foundResults.length > 1 && (
               <button onClick={toggleAll} className="text-xs font-medium text-forest hover:text-forest-dark transition-colors">
-                {foundMatches.every((m) => m.selected) ? "Alle abwählen" : "Alle auswählen"}
+                {foundResults.every((r) => r.selected) ? "Alle abwählen" : "Alle auswählen"}
               </button>
             )}
           </div>
 
           <div className="space-y-2">
-            {matches.map((m, i) => (
+            {results.map((r, i) => (
               <div
-                key={`${m.recognized.name}-${i}`}
+                key={`${r.bggId}-${i}`}
                 className={`flex items-center gap-3 rounded-xl p-3 transition-colors ${
-                  m.status === "found" ? "bg-forest-light/30" :
-                  m.status === "not_found" ? "bg-warm-50" :
-                  m.status === "searching" ? "bg-warm-50" :
+                  r.status === "found" ? "bg-forest-light/30" :
+                  r.status === "not_found" ? "bg-warm-50" :
                   "bg-warm-50"
                 }`}
               >
                 {/* Checkbox */}
-                {m.status === "found" && m.bggData && (
+                {r.status === "found" && (
                   <button
-                    onClick={() => toggleMatch(i)}
+                    onClick={() => toggleResult(i)}
                     className={`flex-shrink-0 h-5 w-5 rounded-md border-2 transition-all flex items-center justify-center ${
-                      m.selected
+                      r.selected
                         ? "border-forest bg-forest text-white"
                         : "border-warm-300 bg-white"
                     }`}
                   >
-                    {m.selected && (
+                    {r.selected && (
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
@@ -1168,13 +1147,13 @@ function PhotoScanTab() {
                 )}
 
                 {/* Thumbnail */}
-                {m.bggData?.thumbnail ? (
+                {r.thumbnail ? (
                   <div className="flex-shrink-0 h-12 w-12 rounded-lg overflow-hidden bg-warm-100">
-                    <img src={m.bggData.thumbnail} alt={m.bggData.name} className="h-full w-full object-cover" />
+                    <img src={r.thumbnail} alt={r.name} className="h-full w-full object-cover" />
                   </div>
                 ) : (
                   <div className="flex-shrink-0 h-12 w-12 rounded-lg bg-warm-100 flex items-center justify-center">
-                    {m.status === "searching" ? (
+                    {r.status === "fetching" || r.status === "pending" ? (
                       <div className="spinner" />
                     ) : (
                       <svg className="h-5 w-5 text-warm-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -1186,33 +1165,29 @@ function PhotoScanTab() {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-warm-900 truncate">
-                    {m.bggData?.name || m.recognized.name}
-                  </p>
+                  <p className="text-sm font-medium text-warm-900 truncate">{r.name}</p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    {m.bggData?.yearpublished && (
-                      <span className="text-xs text-warm-500">({m.bggData.yearpublished})</span>
+                    <span className="text-[10px] font-mono text-warm-400">BGG #{r.bggId}</span>
+                    {r.yearpublished && (
+                      <span className="text-xs text-warm-500">({r.yearpublished})</span>
                     )}
-                    {m.status === "found" && m.recognized.name !== m.bggData?.name && (
-                      <span className="text-[10px] text-warm-400">AI: &quot;{m.recognized.name}&quot;</span>
+                    {r.status === "fetching" && (
+                      <span className="text-xs text-warm-400">Verifiziere...</span>
                     )}
-                    {m.status === "searching" && (
-                      <span className="text-xs text-warm-400">Suche auf BGG...</span>
-                    )}
-                    {m.status === "not_found" && (
-                      <span className="text-xs text-coral">Nicht auf BGG gefunden</span>
+                    {r.status === "not_found" && (
+                      <span className="text-xs text-coral">ID nicht gefunden</span>
                     )}
                   </div>
                 </div>
 
                 {/* Confidence badge */}
                 <span className={`flex-shrink-0 rounded-lg px-2 py-0.5 text-[10px] font-semibold ${
-                  m.recognized.confidence === "high" ? "bg-forest-light text-forest" :
-                  m.recognized.confidence === "medium" ? "bg-amber-light text-amber-dark" :
+                  r.recognized.confidence === "high" ? "bg-forest-light text-forest" :
+                  r.recognized.confidence === "medium" ? "bg-amber-light text-amber-dark" :
                   "bg-warm-100 text-warm-500"
                 }`}>
-                  {m.recognized.confidence === "high" ? "Sicher" :
-                   m.recognized.confidence === "medium" ? "Wahrscheinlich" :
+                  {r.recognized.confidence === "high" ? "Sicher" :
+                   r.recognized.confidence === "medium" ? "Wahrscheinlich" :
                    "Unsicher"}
                 </span>
               </div>
@@ -1237,7 +1212,7 @@ function PhotoScanTab() {
             </div>
           )}
 
-          {selectedCount === 0 && foundMatches.length > 0 && (
+          {selectedCount === 0 && foundResults.length > 0 && (
             <p className="mt-3 text-sm text-warm-400">Wähle mindestens ein Spiel zum Importieren aus.</p>
           )}
         </div>

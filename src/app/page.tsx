@@ -4,19 +4,15 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import GameCard from "@/components/GameCard";
 import FilterBar from "@/components/FilterBar";
 import type { Game, GameFilters } from "@/types/game";
-import { getAllGames, ensureSeedData } from "@/lib/db-client";
+import { getAllGames } from "@/lib/db-client";
 
 export default function CollectionPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [filters, setFilters] = useState<GameFilters>({});
   const [loading, setLoading] = useState(true);
-  const [seeding, setSeeding] = useState(false);
 
   const loadGames = useCallback(async () => {
     try {
-      setSeeding(true);
-      await ensureSeedData();
-      setSeeding(false);
       const data = await getAllGames();
       setGames(data);
     } catch (error) {
@@ -74,14 +70,12 @@ export default function CollectionPage() {
     });
   }, [games, filters]);
 
-  if (loading || seeding) {
+  if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <div className="text-center">
           <div className="spinner mx-auto" />
-          <p className="mt-4 text-sm font-medium text-warm-500">
-            {seeding ? "Sammlung wird vorbereitet..." : "Laden..."}
-          </p>
+          <p className="mt-4 text-sm font-medium text-warm-500">Laden...</p>
         </div>
       </div>
     );

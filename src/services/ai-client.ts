@@ -117,32 +117,61 @@ async function aiPost(url: string, body: unknown, headers: Record<string, string
 
 // ─── Game Recognition ───
 
-const RECOGNITION_PROMPT = `You are an expert board game identifier. Analyze this photo of a board game collection/shelf carefully.
+const RECOGNITION_PROMPT = `You are an expert board game identifier with deep knowledge of BoardGameGeek (BGG).
 
-TASK: Identify every board game visible in the image. Look at:
+TASK: Identify every board game visible in this photo and provide the exact BGG ID for each game.
+
+Look at:
 - Box spines (text on the side of boxes)
 - Box covers/fronts
 - Any visible game logos, artwork, or text
 
 RULES:
-1. Use the EXACT name as listed on BoardGameGeek (BGG). This is critical for search matching.
-   - "Catan" not "Die Siedler von Catan" or "Settlers of Catan"
-   - "Wingspan" not "Flügelschlag"
-   - "Ticket to Ride" not "Zug um Zug"
-   - "Pandemic" not "Pandemie"
-   - Use the PRIMARY English BGG name, even if the box shows a German/localized edition
-2. Only include games you can actually read or clearly recognize from the image. Do NOT guess.
-3. Set confidence to "high" only if you can clearly read/see the title.
-4. Set confidence to "medium" if you recognize the game by artwork/design but can't fully read the title.
-5. Set confidence to "low" if you're partially guessing based on box shape/color.
+1. You MUST provide the correct BoardGameGeek numeric ID (bggId) for each game.
+   These are the IDs from the URL: boardgamegeek.com/boardgame/{ID}/game-name
+   Common examples:
+   - Catan = 13
+   - Carcassonne = 822
+   - Ticket to Ride = 9209
+   - Pandemic = 30549
+   - Wingspan = 266192
+   - Ark Nova = 342942
+   - Azul = 230802
+   - 7 Wonders = 68448
+   - Codenames = 178900
+   - Dominion = 36218
+   - Terraforming Mars = 167791
+   - Spirit Island = 162886
+   - Agricola = 31260
+   - Puerto Rico = 3076
+   - Dixit = 39856
+   - The Crew = 284083
+   - Everdell = 199792
+   - Root = 237182
+   - Scythe = 169786
+   - Brass: Birmingham = 224517
+   - Great Western Trail = 193738
+   - Gloomhaven = 174430
+   - Die Quacksalber von Quedlinburg / The Quacks of Quedlinburg = 244521
+   - Flügelschlag = Wingspan = 266192
+   - Zug um Zug = Ticket to Ride = 9209
+   - Die Siedler von Catan = Catan = 13
+   - Pandemie = Pandemic = 30549
+2. Recognize LOCALIZED editions: German, French, etc. Map them to the PRIMARY BGG entry.
+3. Only include games you can actually read or clearly recognize. Do NOT guess.
+4. Set confidence to "high" only if you can clearly read/see the title AND are sure of the BGG ID.
+5. Set confidence to "medium" if you recognize the game but are less sure about the exact BGG ID.
+6. Set confidence to "low" if you're partially guessing.
+7. If you're not sure about a BGG ID, still provide your best guess — the app will verify it.
 
 Respond ONLY with a valid JSON array. No markdown code fences, no explanation, no extra text.
-Example: [{"name": "Catan", "confidence": "high"}, {"name": "Ticket to Ride", "confidence": "medium"}]
+Example: [{"name": "Catan", "bggId": 13, "confidence": "high"}, {"name": "Ticket to Ride", "bggId": 9209, "confidence": "medium"}]
 
 If no games are visible, respond: []`;
 
 export interface RecognizedGame {
   name: string;
+  bggId: number | null;
   confidence: "high" | "medium" | "low";
 }
 
@@ -291,11 +320,12 @@ function parseAiResponse(text: string): RecognizedGame[] {
 
     return parsed
       .filter(
-        (item: { name?: string; confidence?: string }) =>
+        (item: { name?: string; bggId?: number; confidence?: string }) =>
           item && typeof item.name === "string" && item.name.trim().length > 0
       )
-      .map((item: { name: string; confidence?: string }) => ({
+      .map((item: { name: string; bggId?: number; confidence?: string }) => ({
         name: item.name.trim(),
+        bggId: typeof item.bggId === "number" && item.bggId > 0 ? item.bggId : null,
         confidence: (["high", "medium", "low"].includes(item.confidence || "")
           ? item.confidence
           : "medium") as "high" | "medium" | "low",
@@ -306,8 +336,8 @@ function parseAiResponse(text: string): RecognizedGame[] {
     if (names && names.length > 0) {
       return names
         .map((n) => n.replace(/"/g, ""))
-        .filter((n) => n.length > 2 && !["name", "confidence", "high", "medium", "low"].includes(n))
-        .map((name) => ({ name, confidence: "low" as const }));
+        .filter((n) => n.length > 2 && !["name", "confidence", "high", "medium", "low", "bggId"].includes(n))
+        .map((name) => ({ name, bggId: null, confidence: "low" as const }));
     }
     return [];
   }

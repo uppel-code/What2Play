@@ -1,6 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { Game, CreateGameInput, UpdateGameInput } from "@/types/game";
-import { SEED_GAMES } from "@/lib/seed";
 
 // ─── Database Definition ───
 
@@ -104,13 +103,3 @@ export async function getGameCount(): Promise<number> {
   return db.games.filter((g) => g.owned === true).count();
 }
 
-// ─── Seed Data ───
-
-export async function ensureSeedData(): Promise<void> {
-  const count = await getGameCount();
-  if (count > 0) return;
-
-  for (const seed of SEED_GAMES) {
-    await createGame(seed);
-  }
-}
