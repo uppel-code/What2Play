@@ -2,6 +2,8 @@ name: Build Android APK
 
 on:
   push:
+    branches: [master, feature/*]
+  pull_request:
     branches: [master]
   workflow_dispatch:
 
@@ -53,6 +55,7 @@ jobs:
         run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release with APK
+        if: github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ steps.sha.outputs.short }}
@@ -63,3 +66,19 @@ jobs:
             Lade die APK direkt herunter — kein Entpacken nötig.
           files: android/app/build/outputs/apk/debug/app-debug.apk
           make_latest: true
+
+      - name: Create Pre-Release for feature branches
+        if: startsWith(github.ref, 'refs/heads/feature/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}-${{ steps.sha.outputs.short }}
+          name: "🧪 ${{ github.ref_name }} (${{ steps.sha.outputs.short }})"
+          body: |
+            **Feature Branch Build**
+
+            Branch: `${{ github.ref_name }}`
+            Commit: ${{ github.sha }}
+
+            ⚠️ Dies ist ein Testbuild — nicht für Produktion!
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          prerelease: true
