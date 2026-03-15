@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { GameFilters } from "@/types/game";
+import { PREDEFINED_TAGS } from "@/types/game";
 
 interface FilterBarProps {
   filters: GameFilters;
@@ -21,6 +22,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
     filters.maxDuration,
     filters.minComplexity || filters.maxComplexity,
     filters.minAge,
+    filters.tags?.length,
   ].filter(Boolean).length;
 
   return (
@@ -118,6 +120,35 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
             <option value="12">ab 12+</option>
             <option value="14">ab 14+</option>
           </FilterSelect>
+
+          {/* Tag filter */}
+          <div className="col-span-2 sm:col-span-4">
+            <label className="mb-1.5 block text-xs font-medium text-warm-500">Tags</label>
+            <div className="flex flex-wrap gap-1.5">
+              {PREDEFINED_TAGS.map((tag) => {
+                const isSelected = filters.tags?.includes(tag.value);
+                return (
+                  <button
+                    key={tag.value}
+                    onClick={() => {
+                      const currentTags = filters.tags || [];
+                      const newTags = isSelected
+                        ? currentTags.filter((t) => t !== tag.value)
+                        : [...currentTags, tag.value];
+                      onChange({ ...filters, tags: newTags.length > 0 ? newTags : undefined });
+                    }}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                      isSelected
+                        ? "bg-forest text-white"
+                        : "bg-warm-50 text-warm-600 hover:bg-warm-100"
+                    }`}
+                  >
+                    {tag.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {activeFilterCount > 0 && (
             <button

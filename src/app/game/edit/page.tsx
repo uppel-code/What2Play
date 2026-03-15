@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { Game } from "@/types/game";
+import { PREDEFINED_TAGS } from "@/types/game";
 import { getGameById, updateGame, deleteGame } from "@/lib/db-client";
 
 function EditGameContent() {
@@ -21,7 +22,10 @@ function EditGameContent() {
     minAge: 0,
     averageWeight: 2.0,
     yearpublished: null as number | null,
+    tags: [] as string[],
+    notes: "" as string,
   });
+  const [customTag, setCustomTag] = useState("");
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
@@ -37,6 +41,8 @@ function EditGameContent() {
             minAge: data.minAge,
             averageWeight: data.averageWeight,
             yearpublished: data.yearpublished,
+            tags: data.tags || [],
+            notes: data.notes || "",
           });
         }
       })
@@ -150,6 +156,105 @@ function EditGameContent() {
             />
           </FormField>
         </div>
+
+        {/* Tags */}
+        <div>
+          <label className="mb-2 block text-xs font-semibold text-warm-500 uppercase tracking-wider">Tags</label>
+          
+          {/* Predefined tags */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {PREDEFINED_TAGS.map((tag) => {
+              const isSelected = form.tags.includes(tag.value);
+              return (
+                <button
+                  key={tag.value}
+                  type="button"
+                  onClick={() => {
+                    if (isSelected) {
+                      setForm({ ...form, tags: form.tags.filter((t) => t !== tag.value) });
+                    } else {
+                      setForm({ ...form, tags: [...form.tags, tag.value] });
+                    }
+                  }}
+                  className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-all ${
+                    isSelected
+                      ? "bg-forest text-white"
+                      : "bg-warm-100 text-warm-600 hover:bg-warm-200"
+                  }`}
+                >
+                  {tag.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Custom tags */}
+          {form.tags.filter((t) => !PREDEFINED_TAGS.some((p) => p.value === t)).length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {form.tags
+                .filter((t) => !PREDEFINED_TAGS.some((p) => p.value === t))
+                .map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 rounded-xl bg-amber-light px-3 py-1.5 text-sm font-medium text-amber-dark"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, tags: form.tags.filter((t) => t !== tag) })}
+                      className="ml-1 hover:text-coral"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+            </div>
+          )}
+
+          {/* Add custom tag */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={customTag}
+              onChange={(e) => setCustomTag(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && customTag.trim()) {
+                  e.preventDefault();
+                  if (!form.tags.includes(customTag.trim())) {
+                    setForm({ ...form, tags: [...form.tags, customTag.trim()] });
+                  }
+                  setCustomTag("");
+                }
+              }}
+              placeholder="Eigenen Tag hinzufügen..."
+              className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (customTag.trim() && !form.tags.includes(customTag.trim())) {
+                  setForm({ ...form, tags: [...form.tags, customTag.trim()] });
+                  setCustomTag("");
+                }
+              }}
+              disabled={!customTag.trim()}
+              className="rounded-xl bg-warm-100 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200 disabled:opacity-50"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <FormField label="Notizen">
+          <textarea
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            rows={3}
+            placeholder="Eigene Notizen zum Spiel..."
+            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+          />
+        </FormField>
 
         <div className="flex gap-3 border-t border-warm-100 pt-5">
           <button

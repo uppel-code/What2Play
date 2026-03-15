@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { Game, CreateGameInput, UpdateGameInput } from "@/types/game";
+import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup } from "@/types/game";
 
 // ─── Database Definition ───
 
@@ -29,12 +29,35 @@ interface GameRecord {
   updatedAt: string;
 }
 
+interface PlayerRecord {
+  id: number;
+  name: string;
+  maxComplexity: number | null;
+  preferredDuration: number | null;
+}
+
+interface PlayGroupRecord {
+  id: number;
+  name: string;
+  playerIds: number[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 const db = new Dexie("What2PlayDB") as Dexie & {
   games: EntityTable<GameRecord, "id">;
+  players: EntityTable<PlayerRecord, "id">;
+  playGroups: EntityTable<PlayGroupRecord, "id">;
 };
 
 db.version(1).stores({
   games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight",
+});
+
+db.version(2).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight",
+  players: "++id, name",
+  playGroups: "++id, name",
 });
 
 // ─── CRUD Operations ───
@@ -101,5 +124,95 @@ export async function deleteGame(id: number): Promise<boolean> {
 
 export async function getGameCount(): Promise<number> {
   return db.games.filter((g) => g.owned === true).count();
+}
+
+// ─── Player Operations ───
+
+export async function getAllPlayers(): Promise<Player[]> {
+  const records = await db.players.orderBy("name").toArray();
+  return records.map((r) => ({
+    id: r.id,
+    name: r.name,
+    maxComplexity: r.maxComplexity ?? undefined,
+    preferredDuration: r.preferredDuration ?? undefined,
+  }));
+}
+
+export async function createPlayer(name: string, maxComplexity?: number, preferredDuration?: number): Promise<Player> {
+  const id = await db.players.add({
+    name,
+    maxComplexity: maxComplexity ?? null,
+    preferredDuration: preferredDuration ?? null,
+  } as PlayerRecord);
+  return { id: id as number, name, maxComplexity, preferredDuration };
+}
+
+export async function updatePlayer(id: number, data: Partial<Omit<Player, "id">>): Promise<Player | undefined> {
+  await db.players.update(id, {
+    ...data,
+    maxComplexity: data.maxComplexity ?? null,
+    preferredDuration: data.preferredDuration ?? null,
+  });
+  const record = await db.players.get(id);
+  if (!record) return undefined;
+  return {
+    id: record.id,
+    name: record.name,
+    maxComplexity: record.maxComplexity ?? undefined,
+    preferredDuration: record.preferredDuration ?? undefined,
+  };
+}
+
+export async function deletePlayer(id: number): Promise<boolean> {
+  const existing = await db.players.get(id);
+  if (!existing) return false;
+  await db.players.delete(id);
+  // Also remove from all groups
+  const groups = await db.playGroups.toArray();
+  for (const group of groups) {
+    if (group.playerIds.includes(id)) {
+      await db.playGroups.update(group.id, {
+        playerIds: group.playerIds.filter((pid) => pid !== id),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+  return true;
+}
+
+// ─── PlayGroup Operations ───
+
+export async function getAllPlayGroups(): Promise<PlayGroup[]> {
+  return db.playGroups.orderBy("name").toArray();
+}
+
+export async function getPlayGroup(id: number): Promise<PlayGroup | undefined> {
+  return db.playGroups.get(id);
+}
+
+export async function createPlayGroup(name: string, playerIds: number[] = []): Promise<PlayGroup> {
+  const now = new Date().toISOString();
+  const id = await db.playGroups.add({
+    name,
+    playerIds,
+    createdAt: now,
+    updatedAt: now,
+  } as PlayGroupRecord);
+  return { id: id as number, name, playerIds, createdAt: now, updatedAt: now };
+}
+
+export async function updatePlayGroup(id: number, data: { name?: string; playerIds?: number[] }): Promise<PlayGroup | undefined> {
+  await db.playGroups.update(id, {
+    ...data,
+    updatedAt: new Date().toISOString(),
+  });
+  return db.playGroups.get(id);
+}
+
+export async function deletePlayGroup(id: number): Promise<boolean> {
+  const existing = await db.playGroups.get(id);
+  if (!existing) return false;
+  await db.playGroups.delete(id);
+  return true;
 }
 

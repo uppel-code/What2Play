@@ -67,6 +67,9 @@ export default function CollectionPage() {
       if (filters.minAge != null) {
         if (game.minAge > filters.minAge) return false;
       }
+      if (filters.tags && filters.tags.length > 0) {
+        if (!filters.tags.some((tag) => game.tags.includes(tag))) return false;
+      }
       return true;
     });
   }, [games, filters]);

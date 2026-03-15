@@ -91,6 +91,7 @@ export interface GameFilters {
   minComplexity?: number;
   maxComplexity?: number;
   minAge?: number;
+  tags?: string[];
 }
 
 export interface TodayPlayParams {
@@ -112,6 +113,23 @@ export interface ScoreBreakdown {
   favoriteBonus: number;
   lastPlayedBonus: number;
   tagBonus: number;
+}
+
+// ─── Play Groups ───
+
+export interface Player {
+  id: number;
+  name: string;
+  maxComplexity?: number; // optional preference
+  preferredDuration?: number; // optional preference in minutes
+}
+
+export interface PlayGroup {
+  id: number;
+  name: string;
+  playerIds: number[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── API Types ───
