@@ -667,6 +667,128 @@ async function callClaudeChat(apiKey: string, systemPrompt: string, history: Rul
   return parsed?.content?.[0]?.text || "";
 }
 
+// ─── Barcode/EAN Recognition ───
+
+const BARCODE_PROMPT = `You are a barcode and EAN expert. Look at this photo and:
+1. Find any barcode, EAN, or UPC code visible in the image
+2. Read the number from the barcode
+3. Identify what board game this barcode belongs to
+
+If you can read the barcode number, search your knowledge for what board game has this EAN/UPC.
+If you cannot read the barcode but can see a board game box, identify the game from the box.
+
+Respond ONLY with valid JSON (no markdown):
+{"barcode": "1234567890123", "gameName": "Name of the board game", "confidence": "high"}
+
+If no barcode/game found: {"barcode": null, "gameName": null, "confidence": "low"}
+confidence: "high"=certain, "medium"=likely, "low"=guess`;
+
+export interface BarcodeResult {
+  barcode: string | null;
+  gameName: string | null;
+  confidence: "high" | "medium" | "low";
+}
+
+export async function recognizeBarcodeFromImage(base64Image: string): Promise<BarcodeResult> {
+  const config = await getAiConfig();
+  if (!config) throw new Error("AI_NOT_CONFIGURED");
+
+  let responseText: string;
+
+  switch (config.provider) {
+    case "gemini":
+      responseText = await callGeminiBarcode(config.apiKey, base64Image);
+      break;
+    case "openai":
+      responseText = await callOpenAIBarcode(config.apiKey, base64Image);
+      break;
+    case "claude":
+      responseText = await callClaudeBarcode(config.apiKey, base64Image);
+      break;
+    default:
+      throw new Error("UNKNOWN_PROVIDER");
+  }
+
+  return parseBarcodeResponse(responseText);
+}
+
+async function callGeminiBarcode(apiKey: string, base64Image: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const body = {
+    contents: [{
+      parts: [
+        { text: BARCODE_PROMPT },
+        { inlineData: { mimeType: "image/jpeg", data: base64Image } },
+      ],
+    }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+  };
+  const { status, data } = await aiPost(url, body, {});
+  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+  const parsed = JSON.parse(data);
+  return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+}
+
+async function callOpenAIBarcode(apiKey: string, base64Image: string): Promise<string> {
+  const url = "https://api.openai.com/v1/chat/completions";
+  const body = {
+    model: "gpt-4o-mini",
+    messages: [{
+      role: "user",
+      content: [
+        { type: "text", text: BARCODE_PROMPT },
+        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } },
+      ],
+    }],
+    max_tokens: 1024,
+    temperature: 0.2,
+  };
+  const { status, data } = await aiPost(url, body, { Authorization: `Bearer ${apiKey}` });
+  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+  const parsed = JSON.parse(data);
+  return parsed?.choices?.[0]?.message?.content || "{}";
+}
+
+async function callClaudeBarcode(apiKey: string, base64Image: string): Promise<string> {
+  const url = "https://api.anthropic.com/v1/messages";
+  const body = {
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 1024,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64Image } },
+        { type: "text", text: BARCODE_PROMPT },
+      ],
+    }],
+  };
+  const { status, data } = await aiPost(url, body, {
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+    "anthropic-dangerous-direct-browser-access": "true",
+  });
+  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+  const parsed = JSON.parse(data);
+  return parsed?.content?.[0]?.text || "{}";
+}
+
+function parseBarcodeResponse(text: string): BarcodeResult {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  }
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      barcode: parsed.barcode || null,
+      gameName: parsed.gameName || null,
+      confidence: ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "low",
+    };
+  } catch {
+    return { barcode: null, gameName: null, confidence: "low" };
+  }
+}
+
 // ─── Response Parsing ───
 
 function parseAiResponse(text: string): RecognizedGame[] {

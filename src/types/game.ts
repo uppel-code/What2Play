@@ -95,6 +95,7 @@ export interface Game {
   quickRules: string | null;
   // Ownership
   owned: boolean;
+  wishlist: boolean;
   shelfLocation: string | null;
   lastPlayed: string | null;
   favorite: boolean;
@@ -122,6 +123,7 @@ export interface GameFilters {
   neverPlayed?: boolean;
   longNotPlayed?: boolean;       // >30 days since last play
   forSale?: boolean;
+  wishlist?: boolean;
   sortBy?: "name" | "lastPlayed";
   sortDirection?: "asc" | "desc"; // for lastPlayed sorting
 }
@@ -210,6 +212,7 @@ export interface CreateGameInput {
   bggRating?: number | null;
   bggRank?: number | null;
   owned?: boolean;
+  wishlist?: boolean;
   shelfLocation?: string | null;
   favorite?: boolean;
   forSale?: boolean;

@@ -6,7 +6,8 @@ import FilterBar from "@/components/FilterBar";
 import QuickFilters from "@/components/QuickFilters";
 import RandomPicker from "@/components/RandomPicker";
 import type { Game, GameFilters, PlaySession, Loan } from "@/types/game";
-import { getAllGames, deleteGame, getAllSessions, getPlayStats, getGameById, getAllActiveLoans } from "@/lib/db-client";
+import { getAllGames, deleteGame, getAllSessions, getPlayStats, getGameById, getAllActiveLoans, getWishlistGames } from "@/lib/db-client";
+import { generateCollectionShareText } from "@/services/qr-code";
 import Link from "next/link";
 
 export default function CollectionPage() {
@@ -17,6 +18,10 @@ export default function CollectionPage() {
   const [activeLoans, setActiveLoans] = useState<Loan[]>([]);
   const [stats, setStats] = useState<{ totalPlayed: number; thisWeekCount: number; mostPlayedGameId: number | null; mostPlayedCount: number } | null>(null);
   const [mostPlayedGame, setMostPlayedGame] = useState<Game | null>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [shareToast, setShareToast] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"sammlung" | "wunschliste">("sammlung");
+  const [wishlistGames, setWishlistGames] = useState<Game[]>([]);
 
   const handleDelete = useCallback(async (id: number) => {
     const game = games.find((g) => g.id === id);
@@ -29,16 +34,18 @@ export default function CollectionPage() {
 
   const loadGames = useCallback(async () => {
     try {
-      const [data, allSessions, playStats, loans] = await Promise.all([
+      const [data, allSessions, playStats, loans, wlGames] = await Promise.all([
         getAllGames(),
         getAllSessions(),
         getPlayStats(),
         getAllActiveLoans(),
+        getWishlistGames(),
       ]);
       setGames(data);
       setSessions(allSessions);
       setActiveLoans(loans);
       setStats(playStats);
+      setWishlistGames(wlGames);
       if (playStats.mostPlayedGameId) {
         const mpg = await getGameById(playStats.mostPlayedGameId);
         setMostPlayedGame(mpg ?? null);
@@ -54,6 +61,14 @@ export default function CollectionPage() {
   useEffect(() => {
     loadGames();
   }, [loadGames]);
+
+  // Close more menu on outside click
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const close = () => setShowMoreMenu(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [showMoreMenu]);
 
   // Re-fetch when page becomes visible (e.g. navigating back from /add)
   useEffect(() => {
@@ -175,23 +190,85 @@ export default function CollectionPage() {
             {dustyCount > 0 && (
               <span className="ml-2 text-warm-400">· {dustyCount} nie gespielt</span>
             )}
+            {wishlistGames.length > 0 && (
+              <span className="ml-2 text-warm-400">· {wishlistGames.length} auf Wunschliste</span>
+            )}
           </p>
         </div>
         {games.length > 0 && (
           <div className="flex items-center gap-2">
             <RandomPicker games={games} />
-            <Link
-              href="/manage"
-              className="flex items-center gap-1.5 rounded-xl bg-warm-100 px-3 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Verwalten
-            </Link>
+            <div className="relative">
+              <button
+                onClick={() => setShowMoreMenu((v) => !v)}
+                className="flex items-center gap-1.5 rounded-xl bg-warm-100 px-3 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+                aria-label="Mehr"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                </svg>
+              </button>
+              {showMoreMenu && (
+                <div className="absolute right-0 top-full mt-1 z-20 w-48 rounded-xl border border-warm-200 bg-surface shadow-lg py-1">
+                  <button
+                    onClick={async () => {
+                      setShowMoreMenu(false);
+                      const text = generateCollectionShareText(games);
+                      if (navigator.share) {
+                        try {
+                          await navigator.share({ title: "Meine Brettspielsammlung", text });
+                        } catch { /* cancelled */ }
+                      } else {
+                        try {
+                          await navigator.clipboard.writeText(text);
+                          setShareToast("Sammlung kopiert!");
+                          setTimeout(() => setShareToast(null), 3000);
+                        } catch { /* failed */ }
+                      }
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-warm-700 hover:bg-warm-50 transition-colors"
+                  >
+                    Sammlung teilen
+                  </button>
+                  <Link
+                    href="/manage"
+                    onClick={() => setShowMoreMenu(false)}
+                    className="block w-full text-left px-4 py-2.5 text-sm text-warm-700 hover:bg-warm-50 transition-colors"
+                  >
+                    Verwalten
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Sammlung / Wunschliste Tabs */}
+      {wishlistGames.length > 0 && (
+        <div className="mb-4 flex gap-1 rounded-2xl bg-warm-100 p-1">
+          <button
+            onClick={() => setViewMode("sammlung")}
+            className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+              viewMode === "sammlung"
+                ? "bg-surface text-warm-900 shadow-sm"
+                : "text-warm-500 hover:text-warm-700"
+            }`}
+          >
+            Sammlung ({games.length})
+          </button>
+          <button
+            onClick={() => setViewMode("wunschliste")}
+            className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+              viewMode === "wunschliste"
+                ? "bg-surface text-warm-900 shadow-sm"
+                : "text-warm-500 hover:text-warm-700"
+            }`}
+          >
+            Wunschliste ({wishlistGames.length})
+          </button>
+        </div>
+      )}
 
       <QuickFilters filters={filters} onChange={setFilters} />
 
@@ -247,7 +324,30 @@ export default function CollectionPage() {
         </div>
       )}
 
-      {filteredGames.length === 0 ? (
+      {/* Share Toast */}
+      {shareToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] rounded-xl bg-invert px-5 py-2.5 text-sm font-medium text-invert-text shadow-xl">
+          {shareToast}
+        </div>
+      )}
+
+      {/* Wishlist view */}
+      {viewMode === "wunschliste" ? (
+        wishlistGames.length === 0 ? (
+          <div className="mt-16 text-center">
+            <p className="font-display text-lg font-semibold text-warm-700">Wunschliste ist leer</p>
+            <p className="mt-1 text-sm text-warm-500">Füge Spiele über die Add-Seite zur Wunschliste hinzu.</p>
+          </div>
+        ) : (
+          <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {wishlistGames.map((game, i) => (
+              <div key={game.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 40, 400)}ms` }}>
+                <GameCard game={game} activeLoan={null} />
+              </div>
+            ))}
+          </div>
+        )
+      ) : filteredGames.length === 0 ? (
         <div className="mt-16 text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-warm-100">
             <svg className="h-8 w-8 text-warm-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

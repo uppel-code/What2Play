@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import type { BggGameData, BggSearchResult, AchievementKey } from "@/types/game";
 import { createGame, getGameByBggId } from "@/lib/db-client";
 import { searchBgg as bggSearch, fetchBggThing, fetchBggCollection, isBggConfigured } from "@/services/bgg-client";
-import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch, getGameLanguage } from "@/services/ai-client";
+import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch, getGameLanguage, recognizeBarcodeFromImage } from "@/services/ai-client";
 import type { RecognizedGame, VerificationResult } from "@/services/ai-client";
 import { checkOnGameAdd, checkOnPhotoScan } from "@/services/achievements";
 import AchievementToast from "@/components/AchievementToast";
 
-type ActiveTab = "bgg-search" | "bgg-collection" | "bgg-bulk" | "photo-scan" | "manual";
+type ActiveTab = "bgg-search" | "bgg-collection" | "bgg-bulk" | "photo-scan" | "barcode-scan" | "manual";
 
 export default function AddGamePage() {
   const router = useRouter();
@@ -35,6 +35,9 @@ export default function AddGamePage() {
         <TabButton active={activeTab === "bgg-bulk"} onClick={() => setActiveTab("bgg-bulk")}>
           IDs
         </TabButton>
+        <TabButton active={activeTab === "barcode-scan"} onClick={() => setActiveTab("barcode-scan")}>
+          Barcode
+        </TabButton>
         <TabButton active={activeTab === "manual"} onClick={() => setActiveTab("manual")}>
           Manuell
         </TabButton>
@@ -42,6 +45,7 @@ export default function AddGamePage() {
 
       {activeTab === "bgg-search" && <BggSearchTab router={router} />}
       {activeTab === "photo-scan" && <PhotoScanTab />}
+      {activeTab === "barcode-scan" && <BarcodeScanTab />}
       {activeTab === "bgg-collection" && <BggCollectionTab router={router} />}
       {activeTab === "bgg-bulk" && <BggBulkTab />}
       {activeTab === "manual" && <ManualTab router={router} />}
@@ -172,7 +176,7 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
     }
   }
 
-  async function handleAddGame() {
+  async function handleAddGame(asWishlist: boolean = false) {
     if (!selectedGame) return;
 
     setSaving(true);
@@ -194,13 +198,16 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
         mechanics: selectedGame.mechanics,
         bggRating: selectedGame.bggRating,
         bggRank: selectedGame.bggRank,
-        owned: true,
+        owned: !asWishlist,
+        wishlist: asWishlist,
       });
       // Check achievements
-      const newAchievements = await checkOnGameAdd();
-      if (newAchievements.length > 0) {
-        setAchievementQueue(newAchievements);
-        await new Promise((r) => setTimeout(r, 2000));
+      if (!asWishlist) {
+        const newAchievements = await checkOnGameAdd();
+        if (newAchievements.length > 0) {
+          setAchievementQueue(newAchievements);
+          await new Promise((r) => setTimeout(r, 2000));
+        }
       }
       router.push(`/game?id=${game.id}`);
     } catch (err) {
@@ -351,9 +358,9 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
             </div>
           </div>
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             <button
-              onClick={handleAddGame}
+              onClick={() => handleAddGame(false)}
               disabled={saving}
               className="flex-1 rounded-xl bg-forest px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md disabled:opacity-50 active:scale-[0.98] sm:flex-none"
             >
@@ -363,8 +370,15 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
                   Wird hinzugefügt...
                 </span>
               ) : (
-                "Zur Sammlung hinzufügen"
+                "Zur Sammlung"
               )}
+            </button>
+            <button
+              onClick={() => handleAddGame(true)}
+              disabled={saving}
+              className="rounded-xl bg-amber-light px-5 py-2.5 text-sm font-semibold text-amber-dark shadow-sm transition-all hover:shadow-md disabled:opacity-50 active:scale-[0.98]"
+            >
+              Zur Wunschliste
             </button>
             <button
               onClick={handleReset}
@@ -423,6 +437,7 @@ function InfoPill({ icon, text }: { icon: string; text: string }) {
 function BggCollectionTab({ router }: { router: ReturnType<typeof useRouter> }) {
   const [bggUsername, setBggUsername] = useState("");
   const [importing, setImporting] = useState(false);
+  const [importAsWishlist, setImportAsWishlist] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [statusType, setStatusType] = useState<"success" | "error" | "info">("info");
   const [bggConfigured, setBggConfigured] = useState<boolean | null>(null);
@@ -473,11 +488,13 @@ function BggCollectionTab({ router }: { router: ReturnType<typeof useRouter> }) 
             mechanics: game.mechanics,
             bggRating: game.bggRating,
             bggRank: game.bggRank,
-            owned: true,
+            owned: !importAsWishlist,
+            wishlist: importAsWishlist,
           });
           imported++;
         }
-        setStatus(`${imported} Spiele importiert, ${skipped} übersprungen.`);
+        const target = importAsWishlist ? "Wunschliste" : "Sammlung";
+        setStatus(`${imported} Spiele in ${target} importiert, ${skipped} übersprungen.`);
         setStatusType("success");
         if (imported > 0) {
           setTimeout(() => router.push("/"), 1500);
@@ -528,6 +545,23 @@ function BggCollectionTab({ router }: { router: ReturnType<typeof useRouter> }) 
           {importing ? "Importiere..." : "Importieren"}
         </button>
       </div>
+
+      <label className="mt-3 flex items-center gap-2.5 cursor-pointer">
+        <button
+          type="button"
+          onClick={() => setImportAsWishlist((v) => !v)}
+          className={`relative inline-flex h-6 w-10 items-center rounded-full transition-colors ${
+            importAsWishlist ? "bg-amber" : "bg-warm-300"
+          }`}
+          role="switch"
+          aria-checked={importAsWishlist}
+        >
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+            importAsWishlist ? "translate-x-5" : "translate-x-1"
+          }`} />
+        </button>
+        <span className="text-sm text-warm-600">Als Wunschliste importieren</span>
+      </label>
 
       {status && (
         <p className={`mt-3 text-sm font-medium ${
@@ -1479,6 +1513,217 @@ function PhotoScanTab() {
           onDone={() => setAchievementQueue((prev) => prev.slice(1))}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Barcode Scan Tab ───
+
+function BarcodeScanTab() {
+  const router = useRouter();
+  const [aiReady, setAiReady] = useState<boolean | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [gameName, setGameName] = useState<string | null>(null);
+  const [barcode, setBarcode] = useState<string | null>(null);
+  const [confidence, setConfidence] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<BggSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    isAiConfigured().then(setAiReady).catch(() => setAiReady(false));
+  }, []);
+
+  async function handleFile(file: File) {
+    setError(null);
+    setGameName(null);
+    setBarcode(null);
+    setSearchResults([]);
+
+    // Preview
+    const reader = new FileReader();
+    reader.onload = (e) => setImagePreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+
+    // Analyze
+    setAnalyzing(true);
+    try {
+      const base64 = await compressImage(file);
+      const result = await recognizeBarcodeFromImage(base64);
+      setBarcode(result.barcode);
+      setGameName(result.gameName);
+      setConfidence(result.confidence);
+
+      if (result.gameName) {
+        // Search BGG for the recognized game
+        setSearching(true);
+        try {
+          const bggResults = await bggSearch(result.gameName);
+          setSearchResults(bggResults);
+        } catch {
+          setError("BGG-Suche fehlgeschlagen.");
+        }
+        setSearching(false);
+      } else {
+        setError("Kein Spiel auf dem Barcode erkannt. Versuche ein deutlicheres Foto.");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "AI_NOT_CONFIGURED") {
+        setError("AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
+      } else {
+        setError("Barcode-Erkennung fehlgeschlagen. Versuche es erneut.");
+      }
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function handleAddFromBgg(result: BggSearchResult) {
+    setSaving(true);
+    try {
+      const data = await fetchBggThing(result.bggId);
+      if (!data) {
+        setError("Spieldetails konnten nicht geladen werden.");
+        setSaving(false);
+        return;
+      }
+      const game = await createGame({
+        bggId: data.bggId,
+        name: data.name,
+        yearpublished: data.yearpublished,
+        minPlayers: data.minPlayers,
+        maxPlayers: data.maxPlayers,
+        playingTime: data.playingTime,
+        minPlayTime: data.minPlayTime,
+        maxPlayTime: data.maxPlayTime,
+        minAge: data.minAge,
+        averageWeight: data.averageWeight,
+        thumbnail: data.thumbnail,
+        image: data.image,
+        categories: data.categories,
+        mechanics: data.mechanics,
+        bggRating: data.bggRating,
+        bggRank: data.bggRank,
+        owned: true,
+      });
+      router.push(`/game?id=${game.id}`);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("ConstraintError")) {
+        setError("Dieses Spiel ist bereits in deiner Sammlung.");
+      } else {
+        setError("Hinzufügen fehlgeschlagen.");
+      }
+      setSaving(false);
+    }
+  }
+
+  if (aiReady === false) {
+    return (
+      <div className="mt-5 rounded-2xl border border-amber/30 bg-amber-light p-5">
+        <h3 className="text-sm font-semibold text-warm-900">AI-Provider benötigt</h3>
+        <p className="mt-1 text-sm text-warm-600">
+          Für die Barcode-Erkennung wird ein AI-Provider benötigt.
+        </p>
+        <a href="/settings" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark">
+          In Einstellungen einrichten
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-5 space-y-4">
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
+        <p className="text-sm text-warm-500">
+          Fotografiere den Barcode oder EAN auf der Spieleschachtel. Die AI erkennt das Spiel automatisch.
+        </p>
+
+        <div className="mt-4">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFile(file);
+            }}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={analyzing}
+            className="w-full rounded-xl bg-forest px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md disabled:opacity-50 active:scale-[0.98]"
+          >
+            {analyzing ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Barcode wird analysiert...
+              </span>
+            ) : (
+              "Barcode scannen"
+            )}
+          </button>
+        </div>
+
+        {imagePreview && (
+          <div className="mt-4 overflow-hidden rounded-xl border border-warm-200">
+            <img src={imagePreview} alt="Barcode" className="w-full max-h-48 object-contain bg-warm-50" />
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-3 rounded-xl bg-coral-light px-4 py-2.5 text-sm text-coral">
+            {error}
+          </div>
+        )}
+
+        {gameName && (
+          <div className="mt-4 rounded-xl bg-forest-light p-4">
+            <p className="text-sm font-semibold text-forest">Erkanntes Spiel: {gameName}</p>
+            {barcode && (
+              <p className="mt-0.5 text-xs text-forest/70">Barcode: {barcode}</p>
+            )}
+            {confidence && (
+              <p className="mt-0.5 text-xs text-forest/70">
+                Konfidenz: {confidence === "high" ? "Hoch" : confidence === "medium" ? "Mittel" : "Niedrig"}
+              </p>
+            )}
+          </div>
+        )}
+
+        {searching && (
+          <div className="mt-3 flex items-center gap-2.5 text-sm text-warm-500">
+            <div className="spinner" />
+            Suche auf BGG...
+          </div>
+        )}
+
+        {searchResults.length > 0 && (
+          <div className="mt-3">
+            <p className="text-xs font-semibold text-warm-500 uppercase tracking-wider mb-2">BGG Ergebnisse</p>
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-warm-200 bg-surface">
+              {searchResults.slice(0, 5).map((result) => (
+                <button
+                  key={result.bggId}
+                  onClick={() => handleAddFromBgg(result)}
+                  disabled={saving}
+                  className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-forest-light border-b border-warm-100 last:border-b-0 disabled:opacity-50"
+                >
+                  <span className="font-medium text-warm-900">{result.name}</span>
+                  {result.yearpublished && (
+                    <span className="ml-2 flex-shrink-0 text-xs text-warm-500">({result.yearpublished})</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

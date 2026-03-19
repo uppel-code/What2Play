@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Game } from "@/types/game";
@@ -15,6 +15,7 @@ import type { Player, PlaySession, Loan, AchievementKey, Expansion, BggSearchRes
 import { searchExpansions, searchExpansionsByName } from "@/services/bgg-client";
 import { checkOnPlaySession } from "@/services/achievements";
 import AchievementToast from "@/components/AchievementToast";
+import { generateQRMatrix, renderQRToCanvas, getBggUrl } from "@/services/qr-code";
 
 function GameDetailContent() {
   const searchParams = useSearchParams();
@@ -42,6 +43,8 @@ function GameDetailContent() {
   const [saleLoading, setSaleLoading] = useState(false);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [saleToast, setSaleToast] = useState<string | null>(null);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [expansions, setExpansions] = useState<Expansion[]>([]);
   const [showExpansionSearch, setShowExpansionSearch] = useState(false);
   const [expansionSearchResults, setExpansionSearchResults] = useState<BggSearchResult[]>([]);
@@ -431,6 +434,14 @@ function GameDetailContent() {
                 }`}
               >
                 💰 Verkaufen
+              </button>
+            )}
+            {game.bggId && (
+              <button
+                onClick={() => setShowQrModal(true)}
+                className="rounded-xl bg-warm-100 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+              >
+                QR Code
               </button>
             )}
             {game.lastPlayed && (
@@ -997,6 +1008,81 @@ function GameDetailContent() {
               >
                 Schließen
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Modal */}
+      {showQrModal && game?.bggId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setShowQrModal(false)}>
+          <div className="mx-4 w-full max-w-sm rounded-2xl bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="font-display text-xl font-bold text-warm-900">QR Code</h2>
+                <p className="text-sm text-warm-500">{game.name} auf BGG</p>
+              </div>
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="rounded-full p-2 text-warm-400 transition-colors hover:bg-warm-100 hover:text-warm-600"
+                aria-label="Schließen"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex justify-center">
+              <canvas
+                ref={(el) => {
+                  if (el && game.bggId) {
+                    const url = getBggUrl(game.bggId);
+                    const matrix = generateQRMatrix(url);
+                    renderQRToCanvas(matrix, el, { size: 280 });
+                    qrCanvasRef.current = el;
+                  }
+                }}
+                className="rounded-xl"
+              />
+            </div>
+            <p className="mt-3 text-center text-xs text-warm-400 break-all">
+              {getBggUrl(game.bggId)}
+            </p>
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => {
+                  if (!qrCanvasRef.current) return;
+                  qrCanvasRef.current.toBlob((blob) => {
+                    if (!blob) return;
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `${game.name}-qr.png`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  });
+                }}
+                className="flex-1 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
+              >
+                Speichern
+              </button>
+              {"share" in navigator && (
+                <button
+                  onClick={async () => {
+                    if (!qrCanvasRef.current) return;
+                    qrCanvasRef.current.toBlob(async (blob) => {
+                      if (!blob) return;
+                      const file = new File([blob], `${game.name}-qr.png`, { type: "image/png" });
+                      try {
+                        await navigator.share({ title: `${game.name} auf BGG`, files: [file] });
+                      } catch { /* user cancelled */ }
+                    });
+                  }}
+                  className="flex-1 rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+                >
+                  Teilen
+                </button>
+              )}
             </div>
           </div>
         </div>

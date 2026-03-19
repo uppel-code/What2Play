@@ -20,6 +20,7 @@ interface GameRecord {
   categories: string[];
   mechanics: string[];
   owned: boolean;
+  wishlist: boolean;
   shelfLocation: string | null;
   lastPlayed: string | null;
   favorite: boolean;
@@ -219,6 +220,22 @@ db.version(11).stores({
   gameNights: "++id, name, date",
 });
 
+db.version(12).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight, *mechanics, wishlist",
+  players: "++id, name",
+  playGroups: "++id, name",
+  playSessions: "++id, gameId, playedAt",
+  chatMessages: "++id, gameId, createdAt",
+  loans: "++id, gameId, personName, returnedAt",
+  achievements: "++id, &key, unlockedAt",
+  expansions: "++id, parentGameId, bggId, name",
+  gameNights: "++id, name, date",
+}).upgrade((tx) => {
+  return tx.table("games").toCollection().modify((game) => {
+    if (game.wishlist === undefined) game.wishlist = false;
+  });
+});
+
 // ─── CRUD Operations ───
 
 export async function getAllGames(): Promise<Game[]> {
@@ -254,6 +271,7 @@ export async function createGame(data: CreateGameInput): Promise<Game> {
     bggRank: data.bggRank ?? null,
     quickRules: null,
     owned: data.owned !== false,
+    wishlist: data.wishlist ?? false,
     shelfLocation: data.shelfLocation ?? null,
     lastPlayed: null,
     favorite: data.favorite ?? false,
@@ -287,6 +305,14 @@ export async function deleteGame(id: number): Promise<boolean> {
 
 export async function getGameCount(): Promise<number> {
   return db.games.filter((g) => g.owned === true).count();
+}
+
+export async function getWishlistGames(): Promise<Game[]> {
+  return db.games.filter((g) => g.wishlist === true).toArray();
+}
+
+export async function getWishlistCount(): Promise<number> {
+  return db.games.filter((g) => g.wishlist === true).count();
 }
 
 export async function saveQuickRules(gameId: number, quickRules: string): Promise<void> {

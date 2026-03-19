@@ -255,6 +255,11 @@ export default function GameCard({ game, onDelete, activeLoan, expansionCount }:
                 ))}
               </div>
             )}
+            {game.wishlist && (
+              <div className="mt-2 rounded-lg bg-amber-light px-2 py-1 text-[11px] font-medium text-amber-dark">
+                Wunschliste
+              </div>
+            )}
             {activeLoan && (
               <div className="mt-2 rounded-lg bg-amber-light px-2 py-1 text-[11px] font-medium text-amber-dark">
                 📦 Verliehen an {activeLoan.personName}
