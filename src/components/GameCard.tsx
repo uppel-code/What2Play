@@ -9,7 +9,7 @@ interface GameCardProps {
   onDelete?: (id: number) => void;
 }
 
-function daysSinceLastPlayed(lastPlayed: string | null): number | null {
+export function daysSinceLastPlayed(lastPlayed: string | null): number | null {
   if (!lastPlayed) return null;
   const ms = Date.now() - new Date(lastPlayed).getTime();
   return Math.floor(ms / (1000 * 60 * 60 * 24));
@@ -176,6 +176,16 @@ export default function GameCard({ game, onDelete }: GameCardProps) {
             {game.favorite && (
               <span className="absolute top-2.5 right-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-amber/90 text-xs text-white shadow-sm backdrop-blur-sm">
                 ★
+              </span>
+            )}
+            {!game.favorite && game.quickRules && (
+              <span className="absolute top-2.5 right-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-forest/80 text-[10px] text-white shadow-sm backdrop-blur-sm" title="Regeln vorhanden">
+                ✅
+              </span>
+            )}
+            {!game.favorite && !game.quickRules && game.lastPlayed && (daysSinceLastPlayed(game.lastPlayed) ?? 0) > 30 && (
+              <span className="absolute top-2.5 right-2.5 flex h-6 items-center justify-center rounded-full bg-amber/90 px-1.5 text-[10px] font-medium text-white shadow-sm backdrop-blur-sm" title="Regeln auffrischen?">
+                🎲 Regeln?
               </span>
             )}
             {!game.lastPlayed && (

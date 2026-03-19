@@ -439,6 +439,26 @@ function GameDetailContent() {
                   ▶ Video anschauen
                 </a>
               </div>
+              <div className="flex gap-3">
+                {game.bggId && (
+                  <a
+                    href={`https://boardgamegeek.com/boardgame/${game.bggId}/files`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-warm-200 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-50"
+                  >
+                    📄 BGG Anleitungen
+                  </a>
+                )}
+                <a
+                  href={`https://www.google.com/search?q=${encodeURIComponent(game.name + " Spielanleitung PDF")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-warm-200 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-50"
+                >
+                  🔍 PDF suchen
+                </a>
+              </div>
               {quickRulesText && !quickRulesLoading && (
                 <button
                   onClick={async () => {
