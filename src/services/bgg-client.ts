@@ -171,6 +171,13 @@ function parseThingXml(xml: string): BggGameData | null {
     if (linkMatch[1] === "boardgamemechanic") mechanics.push(linkMatch[2]);
   }
 
+  const ratingMatch = block.match(/<average\s[^>]*value="([^"]*)"[^>]*\/>/);
+  const bggRating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+
+  const rankRegex = /<rank[^>]*type="subtype"[^>]*name="boardgame"[^>]*value="([^"]*)"[^>]*\/>/;
+  const rankMatch = block.match(rankRegex);
+  const bggRank = rankMatch && rankMatch[1] !== "Not Ranked" ? parseInt(rankMatch[1], 10) : null;
+
   return {
     bggId,
     name,
@@ -186,6 +193,8 @@ function parseThingXml(xml: string): BggGameData | null {
     image: image || null,
     categories,
     mechanics,
+    bggRating: bggRating && bggRating > 0 ? Math.round(bggRating * 10) / 10 : null,
+    bggRank,
   };
 }
 
@@ -212,6 +221,13 @@ function parseCollectionXml(xml: string): BggGameData[] {
     const weightMatch = block.match(/<averageweight\s[^>]*value="([^"]*)"[^>]*\/>/);
     const averageWeight = weightMatch ? parseFloat(weightMatch[1]) : 0;
 
+    const ratingMatch = block.match(/<average\s[^>]*value="([^"]*)"[^>]*\/>/);
+    const bggRating = ratingMatch ? parseFloat(ratingMatch[1]) : null;
+
+    const rankRegex = /<rank[^>]*type="subtype"[^>]*name="boardgame"[^>]*value="([^"]*)"[^>]*\/>/;
+    const rankMatch = block.match(rankRegex);
+    const bggRank = rankMatch && rankMatch[1] !== "Not Ranked" ? parseInt(rankMatch[1], 10) : null;
+
     games.push({
       bggId,
       name: name || `Unknown (${bggId})`,
@@ -227,6 +243,8 @@ function parseCollectionXml(xml: string): BggGameData[] {
       image: image || null,
       categories: [],
       mechanics: [],
+      bggRating: bggRating && bggRating > 0 ? Math.round(bggRating * 10) / 10 : null,
+      bggRank,
     });
   }
 

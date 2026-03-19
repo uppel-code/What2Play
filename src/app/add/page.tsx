@@ -189,6 +189,8 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
         image: selectedGame.image,
         categories: selectedGame.categories,
         mechanics: selectedGame.mechanics,
+        bggRating: selectedGame.bggRating,
+        bggRank: selectedGame.bggRank,
         owned: true,
       });
       router.push(`/game?id=${game.id}`);
@@ -453,6 +455,8 @@ function BggCollectionTab({ router }: { router: ReturnType<typeof useRouter> }) 
             image: game.image,
             categories: game.categories,
             mechanics: game.mechanics,
+            bggRating: game.bggRating,
+            bggRank: game.bggRank,
             owned: true,
           });
           imported++;
@@ -594,6 +598,8 @@ function BggBulkTab() {
               image: data.image,
               categories: data.categories,
               mechanics: data.mechanics,
+              bggRating: data.bggRating,
+              bggRank: data.bggRank,
               owned: true,
             });
             bulkResults.push({ bggId, name: data.name, status: "imported" });
@@ -1004,6 +1010,8 @@ function PhotoScanTab() {
             image: data.image,
             categories: data.categories,
             mechanics: data.mechanics,
+            bggRating: data.bggRating,
+            bggRank: data.bggRank,
             owned: true,
           });
           setResults((prev) =>

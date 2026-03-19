@@ -52,6 +52,14 @@ const QUICK_FILTERS: QuickFilter[] = [
     isActive: (f) => f.minComplexity === 3.0 && f.maxComplexity == null,
     remove: (f) => ({ ...f, minComplexity: undefined, maxComplexity: undefined }),
   },
+  {
+    id: "dusty",
+    label: "Verstaubt",
+    icon: "🕸️",
+    apply: (f) => ({ ...f, neverPlayed: true }),
+    isActive: (f) => f.neverPlayed === true,
+    remove: (f) => ({ ...f, neverPlayed: undefined }),
+  },
 ];
 
 interface QuickFiltersProps {

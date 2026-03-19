@@ -25,6 +25,8 @@ interface GameRecord {
   favorite: boolean;
   notes: string | null;
   tags: string[];
+  bggRating: number | null;
+  bggRank: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,6 +62,17 @@ db.version(2).stores({
   playGroups: "++id, name",
 });
 
+db.version(3).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight",
+  players: "++id, name",
+  playGroups: "++id, name",
+}).upgrade((tx) => {
+  return tx.table("games").toCollection().modify((game) => {
+    if (game.bggRating === undefined) game.bggRating = null;
+    if (game.bggRank === undefined) game.bggRank = null;
+  });
+});
+
 // ─── CRUD Operations ───
 
 export async function getAllGames(): Promise<Game[]> {
@@ -91,6 +104,8 @@ export async function createGame(data: CreateGameInput): Promise<Game> {
     image: data.image ?? null,
     categories: data.categories ?? [],
     mechanics: data.mechanics ?? [],
+    bggRating: data.bggRating ?? null,
+    bggRank: data.bggRank ?? null,
     owned: data.owned !== false,
     shelfLocation: data.shelfLocation ?? null,
     lastPlayed: null,

@@ -55,6 +55,10 @@ export default function CollectionPage() {
       .slice(0, 3);
   }, [games]);
 
+  const dustyCount = useMemo(() => {
+    return games.filter((g) => !g.lastPlayed).length;
+  }, [games]);
+
   const filteredGames = useMemo(() => {
     return games.filter((game) => {
       if (filters.search) {
@@ -79,6 +83,9 @@ export default function CollectionPage() {
       if (filters.tags && filters.tags.length > 0) {
         if (!filters.tags.some((tag) => game.tags.includes(tag))) return false;
       }
+      if (filters.neverPlayed) {
+        if (game.lastPlayed != null) return false;
+      }
       return true;
     });
   }, [games, filters]);
@@ -99,7 +106,12 @@ export default function CollectionPage() {
       <div className="mb-6 flex items-end justify-between">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight text-warm-900">Meine Sammlung</h1>
-          <p className="mt-1 text-sm font-medium text-warm-500">{games.length} Spiele in deinem Regal</p>
+          <p className="mt-1 text-sm font-medium text-warm-500">
+            {games.length} Spiele in deinem Regal
+            {dustyCount > 0 && (
+              <span className="ml-2 text-warm-400">· {dustyCount} nie gespielt</span>
+            )}
+          </p>
         </div>
         {games.length > 0 && (
           <div className="flex items-center gap-2">

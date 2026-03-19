@@ -16,13 +16,13 @@
 
 ## Roadmap
 
-### v0.3 - Core UX (Next) - REPRIORITIZED
+### v0.3 - Core UX ✅ COMPLETED (2026-03-19)
 - [x] Merge feature branches to master
-- [ ] 🎲 Random Picker with animation ("Überrasch mich!")
-- [ ] ⚡ Quick filters on home (player count, duration, complexity)
-- [ ] 🌙 Dark mode
-- [ ] "Zuletzt gespielt" section on home
-- [ ] Onboarding flow for new users
+- [x] 🎲 Random Picker with animation ("Überrasch mich!")
+- [x] ⚡ Quick filters on home (player count, duration, complexity)
+- [x] 🌙 Dark mode
+- [x] "Zuletzt gespielt" section on home
+- [x] Onboarding flow for new users
 
 ### User Research Insights (2026-03-19)
 **Power Users want:** BGG ratings in app, mechanics search, shame pile tracker

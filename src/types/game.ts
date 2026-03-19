@@ -15,6 +15,8 @@ export interface BggGameData {
   image: string | null;
   categories: string[];
   mechanics: string[];
+  bggRating: number | null;  // BGG average rating (1.0–10.0)
+  bggRank: number | null;    // BGG overall board game rank
 }
 
 // ─── User Ownership Data ───
@@ -68,6 +70,8 @@ export interface Game {
   image: string | null;
   categories: string[];
   mechanics: string[];
+  bggRating: number | null;
+  bggRank: number | null;
   // Ownership
   owned: boolean;
   shelfLocation: string | null;
@@ -92,6 +96,7 @@ export interface GameFilters {
   maxComplexity?: number;
   minAge?: number;
   tags?: string[];
+  neverPlayed?: boolean;
 }
 
 export interface TodayPlayParams {
@@ -149,6 +154,8 @@ export interface CreateGameInput {
   image?: string | null;
   categories?: string[];
   mechanics?: string[];
+  bggRating?: number | null;
+  bggRank?: number | null;
   owned?: boolean;
   shelfLocation?: string | null;
   favorite?: boolean;
