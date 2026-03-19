@@ -14,7 +14,7 @@ export default function ScoredGameCard({ game, rank }: ScoredGameCardProps) {
   return (
     <Link
       href={`/game?id=${game.id}`}
-      className="card-hover group flex gap-4 rounded-2xl border border-warm-200/80 bg-white p-4"
+      className="card-hover group flex gap-4 rounded-2xl border border-warm-200/80 bg-surface p-4"
     >
       {/* Rank badge */}
       <div className="flex flex-col items-center justify-start gap-1">
@@ -75,9 +75,9 @@ export default function ScoredGameCard({ game, rank }: ScoredGameCardProps) {
 function ScorePill({ label, value, max }: { label: string; value: number; max: number }) {
   const pct = (value / max) * 100;
   let color = "bg-coral-light text-coral";
-  if (pct >= 80) color = "bg-emerald-50 text-emerald-700";
+  if (pct >= 80) color = "bg-easy text-easy-text";
   else if (pct >= 50) color = "bg-amber-light text-amber-dark";
-  else if (pct >= 30) color = "bg-orange-50 text-orange-700";
+  else if (pct >= 30) color = "bg-hard text-hard-text";
 
   return (
     <span className={`rounded-md px-1.5 py-0.5 ${color}`}>

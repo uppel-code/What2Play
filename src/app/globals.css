@@ -1,12 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-display: 'Bricolage Grotesque', serif;
   --font-body: 'DM Sans', sans-serif;
 
   --color-cream: #F8F6F1;
   --color-cream-dark: #EFEADE;
+
+  --color-surface: #FFFFFF;
 
   --color-forest: #1A5C3A;
   --color-forest-dark: #144A2E;
@@ -19,6 +23,15 @@
   --color-coral: #C4574A;
   --color-coral-light: #FDF0EE;
 
+  --color-easy: #ecfdf5;
+  --color-easy-text: #047857;
+  --color-hard: #fff7ed;
+  --color-hard-text: #c2410c;
+
+  /* Inverted surface: dark in light mode, light in dark mode (for toasts/overlays) */
+  --color-invert: #1C1917;
+  --color-invert-text: #FFFFFF;
+
   --color-warm-50: #FAF9F7;
   --color-warm-100: #F3F0EB;
   --color-warm-200: #E7E0D8;
@@ -29,6 +42,44 @@
   --color-warm-700: #57534E;
   --color-warm-800: #3B3835;
   --color-warm-900: #1C1917;
+}
+
+/* ─── Dark mode color overrides ─── */
+.dark {
+  --color-cream: #121110;
+  --color-cream-dark: #0E0D0C;
+
+  --color-surface: #1E1B19;
+
+  --color-forest: #34A862;
+  --color-forest-dark: #42C074;
+  --color-forest-light: #162E20;
+
+  --color-amber: #E4BE52;
+  --color-amber-light: #2A2210;
+  --color-amber-dark: #D0A940;
+
+  --color-coral: #E06B5E;
+  --color-coral-light: #2C1916;
+
+  --color-easy: #0D2818;
+  --color-easy-text: #6EE7A8;
+  --color-hard: #2A1A0A;
+  --color-hard-text: #FDBA74;
+
+  --color-invert: #F5F2EE;
+  --color-invert-text: #1C1917;
+
+  --color-warm-50: #1A1816;
+  --color-warm-100: #242220;
+  --color-warm-200: #35322F;
+  --color-warm-300: #4A4643;
+  --color-warm-400: #78716C;
+  --color-warm-500: #928578;
+  --color-warm-600: #B0A395;
+  --color-warm-700: #CEC3B6;
+  --color-warm-800: #E5DDD4;
+  --color-warm-900: #F5F2EE;
 }
 
 /* ─── Base styles ─── */
@@ -48,6 +99,14 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
+}
+
+/* ─── Theme transition ─── */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
 }
 
 /* ─── Custom scrollbar ─── */
@@ -85,6 +144,9 @@ h1, h2, h3, h4, h5, h6 {
 .card-hover:hover {
   transform: translateY(-3px);
   box-shadow: 0 12px 28px -8px rgba(28, 25, 23, 0.12), 0 4px 10px -4px rgba(28, 25, 23, 0.06);
+}
+.dark .card-hover:hover {
+  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.4), 0 4px 10px -4px rgba(0, 0, 0, 0.2);
 }
 
 /* ─── Subtle noise texture overlay ─── */
@@ -124,4 +186,40 @@ h1, h2, h3, h4, h5, h6 {
 }
 .animate-fade-up {
   animation: fade-up 0.4s cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+
+/* ─── Random Picker animations ─── */
+@keyframes picker-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes picker-pop {
+  0% { opacity: 0; transform: scale(0.85) translateY(20px); }
+  60% { opacity: 1; transform: scale(1.03) translateY(-4px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes picker-bounce {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-6px); }
+  60% { transform: translateY(-2px); }
+}
+@keyframes picker-dice {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(90deg) scale(1.2); }
+  50% { transform: rotate(180deg) scale(1); }
+  75% { transform: rotate(270deg) scale(1.2); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+.animate-picker-fade-in {
+  animation: picker-fade-in 0.3s ease both;
+}
+.animate-picker-pop {
+  animation: picker-pop 0.4s cubic-bezier(0.33, 1, 0.68, 1) both;
+}
+.animate-picker-bounce {
+  animation: picker-bounce 0.5s cubic-bezier(0.33, 1, 0.68, 1);
+}
+.animate-picker-dice {
+  animation: picker-dice 0.6s linear infinite;
 }

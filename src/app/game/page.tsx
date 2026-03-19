@@ -199,7 +199,7 @@ function GameDetailContent() {
                 }
               }}
               placeholder="z.B. Regal 1, oben"
-              className="mt-2 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="mt-2 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
           </div>
 
@@ -215,7 +215,7 @@ function GameDetailContent() {
               }}
               rows={3}
               placeholder="Eigene Notizen zum Spiel..."
-              className="mt-2 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="mt-2 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
           </div>
 
@@ -266,7 +266,7 @@ function GameDetailContent() {
       </div>
 
       {saving && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 rounded-xl bg-warm-900 px-5 py-2.5 text-sm font-medium text-white shadow-xl sm:bottom-6">
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 rounded-xl bg-invert px-5 py-2.5 text-sm font-medium text-invert-text shadow-xl sm:bottom-6">
           Wird gespeichert...
         </div>
       )}

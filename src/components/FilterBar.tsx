@@ -26,7 +26,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
   ].filter(Boolean).length;
 
   return (
-    <div className="rounded-2xl border border-warm-200/80 bg-white p-4">
+    <div className="rounded-2xl border border-warm-200/80 bg-surface p-4">
       {/* Search */}
       <div className="flex gap-2">
         <div className="relative flex-1">
@@ -38,7 +38,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
             placeholder="Spiel suchen..."
             value={filters.search || ""}
             onChange={(e) => updateFilter("search", e.target.value)}
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 py-2.5 pl-10 pr-3 text-sm text-warm-900 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 py-2.5 pl-10 pr-3 text-sm text-warm-900 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
           />
         </div>
         <button
@@ -181,7 +181,7 @@ function FilterSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-2.5 py-2 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+        className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-2.5 py-2 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
       >
         {children}
       </select>

@@ -114,13 +114,13 @@ export default function ManageCollectionPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Suchen..."
-              className="w-full rounded-xl border border-warm-200 bg-white py-2 pl-9 pr-3 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/10 sm:w-64"
+              className="w-full rounded-xl border border-warm-200 bg-surface py-2 pl-9 pr-3 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/10 sm:w-64"
             />
           </div>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as "name" | "date")}
-            className="rounded-xl border border-warm-200 bg-white px-3 py-2 text-sm text-warm-700 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/10"
+            className="rounded-xl border border-warm-200 bg-surface px-3 py-2 text-sm text-warm-700 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/10"
           >
             <option value="name">A–Z</option>
             <option value="date">Neueste</option>
@@ -151,7 +151,7 @@ export default function ManageCollectionPage() {
       </div>
 
       {/* List */}
-      <div className="rounded-2xl border border-warm-200/80 bg-white overflow-hidden">
+      <div className="rounded-2xl border border-warm-200/80 bg-surface overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-warm-100 bg-warm-50 px-4 py-3">
           <button
@@ -159,7 +159,7 @@ export default function ManageCollectionPage() {
             className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 transition-all ${
               selected.size === filteredGames.length && filteredGames.length > 0
                 ? "border-forest bg-forest text-white"
-                : "border-warm-300 bg-white"
+                : "border-warm-300 bg-surface"
             }`}
           >
             {selected.size === filteredGames.length && filteredGames.length > 0 && (
@@ -192,7 +192,7 @@ export default function ManageCollectionPage() {
                   className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 transition-all ${
                     selected.has(game.id)
                       ? "border-coral bg-coral text-white"
-                      : "border-warm-300 bg-white"
+                      : "border-warm-300 bg-surface"
                   }`}
                 >
                   {selected.has(game.id) && (

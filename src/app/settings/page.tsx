@@ -5,8 +5,11 @@ import { getBggToken, setBggToken, isBggConfigured } from "@/services/bgg-client
 import { getAiConfig, setAiConfig, clearAiConfig, isAiConfigured, getGameLanguage, setGameLanguage } from "@/services/ai-client";
 import type { AiProvider, GameLanguage } from "@/services/ai-client";
 import { getGameCount } from "@/lib/db-client";
+import { useTheme } from "@/components/ThemeProvider";
+import type { ThemeMode } from "@/services/theme";
 
 export default function SettingsPage() {
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const [token, setToken] = useState("");
   const [savedToken, setSavedToken] = useState<string | null>(null);
   const [bggConfigured, setBggConfigured] = useState<boolean | null>(null);
@@ -108,7 +111,7 @@ export default function SettingsPage() {
       </div>
 
       {/* BGG API Token */}
-      <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${bggConfigured ? "bg-forest-light" : "bg-amber-light"}`}>
             <svg className={`h-5 w-5 ${bggConfigured ? "text-forest" : "text-amber-dark"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -140,7 +143,7 @@ export default function SettingsPage() {
               value={token}
               onChange={(e) => { setToken(e.target.value); setBggSaved(false); }}
               placeholder="Dein BGG API-Token einfügen..."
-              className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm font-mono text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm font-mono text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
             <button
               onClick={handleSaveBggToken}
@@ -172,7 +175,7 @@ export default function SettingsPage() {
       </div>
 
       {/* AI Provider for Photo Scan */}
-      <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${aiConfigured ? "bg-forest-light" : "bg-amber-light"}`}>
             <svg className={`h-5 w-5 ${aiConfigured ? "text-forest" : "text-amber-dark"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -218,7 +221,7 @@ export default function SettingsPage() {
                   onClick={() => { setAiProvider(p); setAiSaved(false); }}
                   className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                     aiProvider === p
-                      ? "bg-white text-warm-900 shadow-sm"
+                      ? "bg-surface text-warm-900 shadow-sm"
                       : "text-warm-500 hover:text-warm-700"
                   }`}
                 >
@@ -240,7 +243,7 @@ export default function SettingsPage() {
                   aiProvider === "openai" ? "sk-... (OpenAI Key)" :
                   "sk-ant-... (Anthropic Key)"
                 }
-                className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm font-mono text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+                className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm font-mono text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
               />
               <button
                 onClick={handleSaveAiConfig}
@@ -273,7 +276,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Game Language */}
-      <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
         <div className="flex items-center gap-3 mb-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-light">
             <svg className="h-5 w-5 text-forest" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -301,7 +304,7 @@ export default function SettingsPage() {
             onClick={() => handleLanguageChange("de")}
             className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
               gameLanguage === "de"
-                ? "bg-white text-warm-900 shadow-sm"
+                ? "bg-surface text-warm-900 shadow-sm"
                 : "text-warm-500 hover:text-warm-700"
             }`}
           >
@@ -311,7 +314,7 @@ export default function SettingsPage() {
             onClick={() => handleLanguageChange("en")}
             className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
               gameLanguage === "en"
-                ? "bg-white text-warm-900 shadow-sm"
+                ? "bg-surface text-warm-900 shadow-sm"
                 : "text-warm-500 hover:text-warm-700"
             }`}
           >
@@ -329,8 +332,41 @@ export default function SettingsPage() {
         )}
       </div>
 
+      {/* Dark Mode */}
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-light">
+            <svg className="h-5 w-5 text-forest" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="font-display text-lg font-bold text-warm-900">Erscheinungsbild</h2>
+            <p className="text-sm text-warm-500">
+              Wähle zwischen hellem und dunklem Design
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-1.5 rounded-xl bg-warm-100 p-1">
+          {(["light", "system", "dark"] as ThemeMode[]).map((m) => (
+            <button
+              key={m}
+              onClick={() => setThemeMode(m)}
+              className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                themeMode === m
+                  ? "bg-surface text-warm-900 shadow-sm"
+                  : "text-warm-500 hover:text-warm-700"
+              }`}
+            >
+              {m === "light" ? "Hell" : m === "dark" ? "Dunkel" : "System"}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* App Info */}
-      <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
         <h2 className="font-display text-lg font-bold text-warm-900 mb-3">App-Info</h2>
         <div className="space-y-2.5 text-sm">
           <div className="flex justify-between py-1.5 border-b border-warm-100">

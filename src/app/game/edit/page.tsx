@@ -80,14 +80,14 @@ function EditGameContent() {
       <h1 className="font-display text-3xl font-bold tracking-tight text-warm-900">Spiel bearbeiten</h1>
       <p className="mt-1 text-sm font-medium text-warm-500">{game.name}</p>
 
-      <form onSubmit={handleSubmit} className="mt-6 space-y-5 rounded-2xl border border-warm-200/80 bg-white p-5">
+      <form onSubmit={handleSubmit} className="mt-6 space-y-5 rounded-2xl border border-warm-200/80 bg-surface p-5">
         <FormField label="Name">
           <input
             type="text"
             required
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
           />
         </FormField>
 
@@ -99,7 +99,7 @@ function EditGameContent() {
               max={99}
               value={form.minPlayers}
               onChange={(e) => setForm({ ...form, minPlayers: Number(e.target.value) })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
           </FormField>
           <FormField label="Max. Spieler">
@@ -109,7 +109,7 @@ function EditGameContent() {
               max={99}
               value={form.maxPlayers}
               onChange={(e) => setForm({ ...form, maxPlayers: Number(e.target.value) })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
           </FormField>
         </div>
@@ -121,7 +121,7 @@ function EditGameContent() {
               min={1}
               value={form.playingTime}
               onChange={(e) => setForm({ ...form, playingTime: Number(e.target.value) })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
           </FormField>
           <FormField label="Mindestalter">
@@ -130,7 +130,7 @@ function EditGameContent() {
               min={0}
               value={form.minAge}
               onChange={(e) => setForm({ ...form, minAge: Number(e.target.value) })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
           </FormField>
         </div>
@@ -144,7 +144,7 @@ function EditGameContent() {
               step={0.1}
               value={form.averageWeight}
               onChange={(e) => setForm({ ...form, averageWeight: Number(e.target.value) })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
           </FormField>
           <FormField label="Erscheinungsjahr">
@@ -152,7 +152,7 @@ function EditGameContent() {
               type="number"
               value={form.yearpublished ?? ""}
               onChange={(e) => setForm({ ...form, yearpublished: e.target.value ? Number(e.target.value) : null })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
           </FormField>
         </div>
@@ -227,7 +227,7 @@ function EditGameContent() {
                 }
               }}
               placeholder="Eigenen Tag hinzufügen..."
-              className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             />
             <button
               type="button"
@@ -252,7 +252,7 @@ function EditGameContent() {
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
             rows={3}
             placeholder="Eigene Notizen zum Spiel..."
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
           />
         </FormField>
 
@@ -274,7 +274,7 @@ function EditGameContent() {
           <button
             type="button"
             onClick={handleDelete}
-            className="ml-auto rounded-xl bg-coral-light px-5 py-2.5 text-sm font-medium text-coral transition-colors hover:bg-red-100"
+            className="ml-auto rounded-xl bg-coral-light px-5 py-2.5 text-sm font-medium text-coral transition-colors hover:bg-coral-light/80"
           >
             Löschen
           </button>

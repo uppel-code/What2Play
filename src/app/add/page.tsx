@@ -55,7 +55,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
       onClick={onClick}
       className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition-all ${
         active
-          ? "bg-white text-warm-900 shadow-sm"
+          ? "bg-surface text-warm-900 shadow-sm"
           : "text-warm-500 hover:text-warm-700"
       }`}
     >
@@ -213,7 +213,7 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
 
   if (bggConfigured === null) {
     return (
-      <div className="mt-5 flex items-center gap-2.5 rounded-2xl border border-warm-200/80 bg-white p-5 text-sm text-warm-500">
+      <div className="mt-5 flex items-center gap-2.5 rounded-2xl border border-warm-200/80 bg-surface p-5 text-sm text-warm-500">
         <div className="spinner" />
         Prüfe BGG-Verbindung...
       </div>
@@ -222,7 +222,7 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
 
   return (
     <div className="mt-5 space-y-4">
-      <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
         <p className="mb-3 text-sm text-warm-500">
           Suche nach einem Brettspiel auf BoardGameGeek – alle Infos werden automatisch übernommen.
         </p>
@@ -236,7 +236,7 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
             value={query}
             onChange={(e) => handleQueryChange(e.target.value)}
             placeholder="Spielname eingeben, z.B. Ark Nova, Wingspan..."
-            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 py-2.5 pl-10 pr-10 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+            className="w-full rounded-xl border border-warm-200 bg-warm-50/50 py-2.5 pl-10 pr-10 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             autoFocus
           />
           {(query || selectedGame) && (
@@ -265,7 +265,7 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
         )}
 
         {searchResults.length > 0 && !selectedGame && (
-          <div className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-warm-200 bg-white">
+          <div className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-warm-200 bg-surface">
             {searchResults.map((result) => (
               <button
                 key={result.bggId}
@@ -289,7 +289,7 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
       </div>
 
       {loadingDetails && (
-        <div className="flex items-center gap-3 rounded-2xl border border-warm-200/80 bg-white p-6">
+        <div className="flex items-center gap-3 rounded-2xl border border-warm-200/80 bg-surface p-6">
           <div className="spinner" />
           <span className="text-sm text-warm-500">Lade Spieldetails von BGG...</span>
         </div>
@@ -328,7 +328,7 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
               {selectedGame.categories.length > 0 && (
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
                   {selectedGame.categories.slice(0, 5).map((cat) => (
-                    <span key={cat} className="rounded-lg bg-white/80 px-2 py-0.5 text-[10px] font-medium text-warm-600 ring-1 ring-warm-200/60">
+                    <span key={cat} className="rounded-lg bg-surface/80 px-2 py-0.5 text-[10px] font-medium text-warm-600 ring-1 ring-warm-200/60">
                       {cat}
                     </span>
                   ))}
@@ -357,7 +357,7 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
             </button>
             <button
               onClick={handleReset}
-              className="rounded-xl bg-white px-5 py-2.5 text-sm font-medium text-warm-600 ring-1 ring-warm-200/60 transition-colors hover:bg-warm-50"
+              className="rounded-xl bg-surface px-5 py-2.5 text-sm font-medium text-warm-600 ring-1 ring-warm-200/60 transition-colors hover:bg-warm-50"
             >
               Anderes Spiel suchen
             </button>
@@ -393,7 +393,7 @@ function InfoPill({ icon, text }: { icon: string; text: string }) {
   };
 
   return (
-    <span className="inline-flex items-center gap-1 rounded-lg bg-white/80 px-2.5 py-1 text-warm-700 ring-1 ring-warm-200/60">
+    <span className="inline-flex items-center gap-1 rounded-lg bg-surface/80 px-2.5 py-1 text-warm-700 ring-1 ring-warm-200/60">
       {iconMap[icon]}
       {text}
     </span>
@@ -486,7 +486,7 @@ function BggCollectionTab({ router }: { router: ReturnType<typeof useRouter> }) 
   }
 
   return (
-    <div className="mt-5 rounded-2xl border border-warm-200/80 bg-white p-5">
+    <div className="mt-5 rounded-2xl border border-warm-200/80 bg-surface p-5">
       <p className="text-sm text-warm-500">
         Importiere deine komplette Sammlung von BoardGameGeek auf einmal.
       </p>
@@ -498,7 +498,7 @@ function BggCollectionTab({ router }: { router: ReturnType<typeof useRouter> }) 
           onChange={(e) => setBggUsername(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleImport()}
           placeholder="BGG Benutzername"
-          className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+          className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
         />
         <button
           onClick={handleImport}
@@ -634,7 +634,7 @@ function BggBulkTab() {
 
   return (
     <div className="mt-5 space-y-4">
-      <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
         <p className="mb-3 text-sm text-warm-500">
           Füge viele Spiele auf einmal hinzu, indem du ihre BGG-IDs eingibst.
           Die ID findest du in der URL eines Spiels auf boardgamegeek.com (z.B. <code className="rounded-lg bg-warm-100 px-1.5 py-0.5 text-xs font-mono text-warm-700">boardgamegeek.com/boardgame/<strong>342942</strong>/ark-nova</code>).
@@ -645,7 +645,7 @@ function BggBulkTab() {
           onChange={(e) => { setInput(e.target.value); setResults(null); setSummary(null); setError(null); }}
           placeholder={"BGG-IDs eingeben (komma-, leerzeichen- oder zeilengetrennt)\nz.B.: 342942, 266192, 167791"}
           rows={5}
-          className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm font-mono text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+          className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm font-mono text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
           disabled={importing}
         />
 
@@ -696,7 +696,7 @@ function BggBulkTab() {
       </div>
 
       {summary && results && (
-        <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+        <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
           <div className="flex flex-wrap gap-2.5 text-sm">
             {summary.imported > 0 && (
               <span className="inline-flex items-center gap-1.5 rounded-xl bg-forest-light px-3.5 py-1.5 font-medium text-forest ring-1 ring-forest/20">
@@ -1068,7 +1068,7 @@ function PhotoScanTab() {
 
   if (aiReady === null) {
     return (
-      <div className="mt-5 flex items-center gap-2.5 rounded-2xl border border-warm-200/80 bg-white p-5 text-sm text-warm-500">
+      <div className="mt-5 flex items-center gap-2.5 rounded-2xl border border-warm-200/80 bg-surface p-5 text-sm text-warm-500">
         <div className="spinner" />
         Prüfe AI-Konfiguration...
       </div>
@@ -1081,7 +1081,7 @@ function PhotoScanTab() {
   return (
     <div className="mt-5 space-y-4">
       {/* Upload area */}
-      <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
         <p className="mb-3 text-sm text-warm-500">
           Fotografiere dein Spieleregal — die AI erkennt die Spiele und ermittelt die BGG-IDs zum direkten Import.
         </p>
@@ -1140,7 +1140,7 @@ function PhotoScanTab() {
             {!analyzing && results.length === 0 && !error && (
               <button
                 onClick={handleReset}
-                className="absolute top-2 right-2 rounded-full bg-warm-900/60 p-1.5 text-white backdrop-blur-sm transition-colors hover:bg-warm-900/80"
+                className="absolute top-2 right-2 rounded-full bg-invert/60 p-1.5 text-invert-text backdrop-blur-sm transition-colors hover:bg-invert/80"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -1166,7 +1166,7 @@ function PhotoScanTab() {
 
       {/* Results */}
       {results.length > 0 && !importing && !importSummary && (
-        <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+        <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display text-base font-bold text-warm-900">
               {results.length} Spiel{results.length !== 1 ? "e" : ""} erkannt
@@ -1196,7 +1196,7 @@ function PhotoScanTab() {
                     className={`flex-shrink-0 h-5 w-5 rounded-md border-2 transition-all flex items-center justify-center ${
                       r.selected
                         ? "border-forest bg-forest text-white"
-                        : "border-warm-300 bg-white"
+                        : "border-warm-300 bg-surface"
                     }`}
                   >
                     {r.selected && (
@@ -1296,7 +1296,7 @@ function PhotoScanTab() {
 
       {/* Import progress */}
       {importing && (
-        <div className="flex items-center gap-3 rounded-2xl border border-warm-200/80 bg-white p-5">
+        <div className="flex items-center gap-3 rounded-2xl border border-warm-200/80 bg-surface p-5">
           <div className="spinner" />
           <span className="text-sm font-medium text-warm-600">Importiere Spiele...</span>
         </div>
@@ -1304,7 +1304,7 @@ function PhotoScanTab() {
 
       {/* Import summary */}
       {importSummary && (
-        <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+        <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
           <div className="flex flex-wrap gap-2.5 text-sm">
             {importSummary.imported > 0 && (
               <span className="inline-flex items-center gap-1.5 rounded-xl bg-forest-light px-3.5 py-1.5 font-medium text-forest ring-1 ring-forest/20">
@@ -1369,7 +1369,7 @@ function ManualTab({ router }: { router: ReturnType<typeof useRouter> }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-5 space-y-5 rounded-2xl border border-warm-200/80 bg-white p-5">
+    <form onSubmit={handleSubmit} className="mt-5 space-y-5 rounded-2xl border border-warm-200/80 bg-surface p-5">
       <p className="text-sm text-warm-500">
         Spiel manuell anlegen – für Spiele die nicht auf BGG sind.
       </p>
@@ -1381,34 +1381,34 @@ function ManualTab({ router }: { router: ReturnType<typeof useRouter> }) {
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           placeholder="z.B. Catan"
-          className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+          className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
         />
       </FormField>
 
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Min. Spieler">
-          <input type="number" min={1} value={form.minPlayers} onChange={(e) => setForm({ ...form, minPlayers: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
+          <input type="number" min={1} value={form.minPlayers} onChange={(e) => setForm({ ...form, minPlayers: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
         <FormField label="Max. Spieler">
-          <input type="number" min={1} value={form.maxPlayers} onChange={(e) => setForm({ ...form, maxPlayers: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
+          <input type="number" min={1} value={form.maxPlayers} onChange={(e) => setForm({ ...form, maxPlayers: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Spieldauer (Min)">
-          <input type="number" min={1} value={form.playingTime} onChange={(e) => setForm({ ...form, playingTime: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
+          <input type="number" min={1} value={form.playingTime} onChange={(e) => setForm({ ...form, playingTime: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
         <FormField label="Mindestalter">
-          <input type="number" min={0} value={form.minAge} onChange={(e) => setForm({ ...form, minAge: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
+          <input type="number" min={0} value={form.minAge} onChange={(e) => setForm({ ...form, minAge: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Komplexität (1–5)">
-          <input type="number" min={1} max={5} step={0.1} value={form.averageWeight} onChange={(e) => setForm({ ...form, averageWeight: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
+          <input type="number" min={1} max={5} step={0.1} value={form.averageWeight} onChange={(e) => setForm({ ...form, averageWeight: Number(e.target.value) })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
         <FormField label="Erscheinungsjahr">
-          <input type="number" value={form.yearpublished ?? ""} onChange={(e) => setForm({ ...form, yearpublished: e.target.value ? Number(e.target.value) : null })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10" />
+          <input type="number" value={form.yearpublished ?? ""} onChange={(e) => setForm({ ...form, yearpublished: e.target.value ? Number(e.target.value) : null })} className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10" />
         </FormField>
       </div>
 
@@ -1418,7 +1418,7 @@ function ManualTab({ router }: { router: ReturnType<typeof useRouter> }) {
           value={form.thumbnail}
           onChange={(e) => setForm({ ...form, thumbnail: e.target.value })}
           placeholder="https://..."
-          className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+          className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
         />
       </FormField>
 

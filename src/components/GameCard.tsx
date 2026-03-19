@@ -15,9 +15,9 @@ function complexityLabel(weight: number): string {
 }
 
 function complexityColor(weight: number): string {
-  if (weight <= 1.5) return "bg-emerald-50 text-emerald-700";
+  if (weight <= 1.5) return "bg-easy text-easy-text";
   if (weight <= 2.5) return "bg-amber-light text-amber-dark";
-  if (weight <= 3.5) return "bg-orange-50 text-orange-700";
+  if (weight <= 3.5) return "bg-hard text-hard-text";
   return "bg-coral-light text-coral";
 }
 
@@ -25,7 +25,7 @@ export default function GameCard({ game }: GameCardProps) {
   return (
     <Link
       href={`/game?id=${game.id}`}
-      className="card-hover group block overflow-hidden rounded-2xl border border-warm-200/80 bg-white"
+      className="card-hover group block overflow-hidden rounded-2xl border border-warm-200/80 bg-surface"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-warm-100">
         {game.thumbnail ? (

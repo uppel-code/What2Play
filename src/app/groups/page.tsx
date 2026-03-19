@@ -136,7 +136,7 @@ export default function GroupsPage() {
           onClick={() => setActiveTab("groups")}
           className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
             activeTab === "groups"
-              ? "bg-white text-warm-900 shadow-sm"
+              ? "bg-surface text-warm-900 shadow-sm"
               : "text-warm-500 hover:text-warm-700"
           }`}
         >
@@ -146,7 +146,7 @@ export default function GroupsPage() {
           onClick={() => setActiveTab("players")}
           className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
             activeTab === "players"
-              ? "bg-white text-warm-900 shadow-sm"
+              ? "bg-surface text-warm-900 shadow-sm"
               : "text-warm-500 hover:text-warm-700"
           }`}
         >
@@ -157,7 +157,7 @@ export default function GroupsPage() {
       {activeTab === "players" && (
         <div className="space-y-4">
           {/* Add player form */}
-          <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+          <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
             <h3 className="font-display text-lg font-bold text-warm-900 mb-3">Neuer Spieler</h3>
             <div className="flex gap-2">
               <input
@@ -166,7 +166,7 @@ export default function GroupsPage() {
                 onChange={(e) => setNewPlayerName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAddPlayer()}
                 placeholder="Name eingeben..."
-                className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+                className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
               />
               <button
                 onClick={handleAddPlayer}
@@ -179,7 +179,7 @@ export default function GroupsPage() {
           </div>
 
           {/* Players list */}
-          <div className="rounded-2xl border border-warm-200/80 bg-white overflow-hidden">
+          <div className="rounded-2xl border border-warm-200/80 bg-surface overflow-hidden">
             {players.length === 0 ? (
               <div className="p-8 text-center text-sm text-warm-500">
                 Noch keine Spieler angelegt
@@ -216,7 +216,7 @@ export default function GroupsPage() {
       {activeTab === "groups" && (
         <div className="space-y-4">
           {/* Add/Edit group form */}
-          <div className="rounded-2xl border border-warm-200/80 bg-white p-5">
+          <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
             <h3 className="font-display text-lg font-bold text-warm-900 mb-3">
               {editingGroup ? "Gruppe bearbeiten" : "Neue Gruppe"}
             </h3>
@@ -230,7 +230,7 @@ export default function GroupsPage() {
                   : setNewGroupName(e.target.value)
               }
               placeholder="Gruppenname..."
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10 mb-3"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10 mb-3"
             />
 
             {players.length > 0 ? (
@@ -294,7 +294,7 @@ export default function GroupsPage() {
           {/* Groups list */}
           <div className="space-y-3">
             {groups.length === 0 ? (
-              <div className="rounded-2xl border border-warm-200/80 bg-white p-8 text-center text-sm text-warm-500">
+              <div className="rounded-2xl border border-warm-200/80 bg-surface p-8 text-center text-sm text-warm-500">
                 Noch keine Gruppen angelegt
               </div>
             ) : (
@@ -303,7 +303,7 @@ export default function GroupsPage() {
                 return (
                   <div
                     key={group.id}
-                    className="rounded-2xl border border-warm-200/80 bg-white p-5"
+                    className="rounded-2xl border border-warm-200/80 bg-surface p-5"
                   >
                     <div className="flex items-start justify-between">
                       <div>

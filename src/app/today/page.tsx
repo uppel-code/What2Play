@@ -45,7 +45,7 @@ export default function TodayPage() {
       </p>
 
       {/* Input form */}
-      <div className="mt-6 rounded-2xl border border-warm-200/80 bg-white p-5">
+      <div className="mt-6 rounded-2xl border border-warm-200/80 bg-surface p-5">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-warm-500 uppercase tracking-wider">
@@ -54,7 +54,7 @@ export default function TodayPage() {
             <select
               value={params.playerCount}
               onChange={(e) => setParams({ ...params, playerCount: Number(e.target.value) })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             >
               {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
                 <option key={n} value={n}>{n} Spieler</option>
@@ -69,7 +69,7 @@ export default function TodayPage() {
             <select
               value={params.availableTime}
               onChange={(e) => setParams({ ...params, availableTime: Number(e.target.value) })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             >
               <option value={30}>30 Min</option>
               <option value={60}>1 Stunde</option>
@@ -87,7 +87,7 @@ export default function TodayPage() {
             <select
               value={params.desiredComplexity}
               onChange={(e) => setParams({ ...params, desiredComplexity: Number(e.target.value) })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors focus:border-forest focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest/10"
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
             >
               <option value={1}>Leicht (1.0)</option>
               <option value={1.5}>Leicht–Mittel (1.5)</option>
@@ -125,7 +125,7 @@ export default function TodayPage() {
       {results !== null && (
         <div className="mt-8">
           {results.length === 0 ? (
-            <div className="rounded-2xl border border-warm-200/80 bg-white p-10 text-center">
+            <div className="rounded-2xl border border-warm-200/80 bg-surface p-10 text-center">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-warm-100">
                 <svg className="h-7 w-7 text-warm-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

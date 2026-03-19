@@ -15,7 +15,7 @@ export default function Navigation() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-warm-200/60 bg-white/80 backdrop-blur-xl sm:static sm:border-b sm:border-t-0 sm:bg-cream/80">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-warm-200/60 bg-surface/80 backdrop-blur-xl sm:static sm:border-b sm:border-t-0 sm:bg-cream/80">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 sm:px-6">
         {/* Logo - desktop */}
         <Link href="/" className="hidden items-center gap-2.5 py-4 sm:flex">
