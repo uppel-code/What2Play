@@ -90,6 +90,26 @@ describe("GameCard forSale badge", () => {
   });
 });
 
+describe("GameCard expansion badge", () => {
+  it("shows expansion badge with count when expansionCount > 0", () => {
+    const game = makeGame();
+    render(<GameCard game={game} expansionCount={3} />);
+    expect(screen.getByText(/\+3/)).toBeInTheDocument();
+  });
+
+  it("does NOT show expansion badge when expansionCount is 0", () => {
+    const game = makeGame();
+    render(<GameCard game={game} expansionCount={0} />);
+    expect(screen.queryByText(/📦 \+/)).not.toBeInTheDocument();
+  });
+
+  it("does NOT show expansion badge when expansionCount is undefined", () => {
+    const game = makeGame();
+    render(<GameCard game={game} />);
+    expect(screen.queryByText(/📦 \+/)).not.toBeInTheDocument();
+  });
+});
+
 describe("daysSinceLastPlayed", () => {
   it("returns null for null input", () => {
     expect(daysSinceLastPlayed(null)).toBeNull();

@@ -108,6 +108,25 @@ export async function fetchBggCollection(username: string): Promise<BggImportRes
   }
 }
 
+export async function searchExpansions(parentBggId: number): Promise<BggSearchResult[]> {
+  // BGG thing endpoint includes expansion links — fetch the parent game and extract them
+  const url = `${BGG_API_BASE}/thing?id=${parentBggId}&type=boardgame`;
+  try {
+    const { status, data } = await bggFetch(url);
+    if (status === 401) throw new Error("BGG_API_TOKEN_INVALID");
+    if (status !== 200) return [];
+    return parseExpansionLinks(data);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("BGG_API_TOKEN")) throw error;
+    return [];
+  }
+}
+
+export async function searchExpansionsByName(gameName: string): Promise<BggSearchResult[]> {
+  // Fallback: search BGG for "[gameName] expansion"
+  return searchBgg(`${gameName} expansion`);
+}
+
 // ─── XML Parsing (copied from server bgg.ts — pure string parsing, no Node deps) ───
 
 function parseSearchXml(xml: string): BggSearchResult[] {
@@ -249,6 +268,21 @@ function parseCollectionXml(xml: string): BggGameData[] {
   }
 
   return games;
+}
+
+function parseExpansionLinks(xml: string): BggSearchResult[] {
+  const results: BggSearchResult[] = [];
+  const linkRegex = /<link\s[^>]*type="boardgameexpansion"[^>]*id="(\d+)"[^>]*value="([^"]*)"[^>]*\/>/g;
+
+  let match;
+  while ((match = linkRegex.exec(xml)) !== null) {
+    const bggId = parseInt(match[1], 10);
+    const name = match[2];
+    results.push({ bggId, name, yearpublished: null });
+  }
+
+  results.sort((a, b) => a.name.localeCompare(b.name));
+  return results;
 }
 
 function extractText(block: string, tag: string): string | null {

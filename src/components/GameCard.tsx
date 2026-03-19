@@ -8,6 +8,7 @@ interface GameCardProps {
   game: Game;
   onDelete?: (id: number) => void;
   activeLoan?: Loan | null;
+  expansionCount?: number;
 }
 
 export function daysSinceLastPlayed(lastPlayed: string | null): number | null {
@@ -30,7 +31,7 @@ function complexityColor(weight: number): string {
   return "bg-coral-light text-coral";
 }
 
-export default function GameCard({ game, onDelete, activeLoan }: GameCardProps) {
+export default function GameCard({ game, onDelete, activeLoan, expansionCount }: GameCardProps) {
   const [offsetX, setOffsetX] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
@@ -262,6 +263,11 @@ export default function GameCard({ game, onDelete, activeLoan }: GameCardProps) 
             {game.forSale && (
               <div className="mt-2 rounded-lg bg-forest-light px-2 py-1 text-[11px] font-medium text-forest">
                 💰 Zu verkaufen
+              </div>
+            )}
+            {expansionCount != null && expansionCount > 0 && (
+              <div className="mt-2 rounded-lg bg-warm-100 px-2 py-1 text-[11px] font-medium text-warm-600">
+                📦 +{expansionCount}
               </div>
             )}
           </div>

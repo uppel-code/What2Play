@@ -5,13 +5,14 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Game } from "@/types/game";
 import { PREDEFINED_TAGS, COMMON_MECHANICS } from "@/types/game";
-import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPlayers, getActiveLoanByGame, createLoan, returnLoan } from "@/lib/db-client";
+import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPlayers, getActiveLoanByGame, createLoan, returnLoan, getExpansionsByGame, createExpansion, updateExpansion, deleteExpansion } from "@/lib/db-client";
 import { generateQuickRules, isAiConfigured, generateSaleText } from "@/services/ai-client";
 import type { SaleCondition, SaleExtra, SaleTextResult } from "@/services/ai-client";
 import { saveQuickRules, getQuickRules } from "@/lib/db-client";
 import { COMMON_MECHANICS as AI_MECHANICS } from "@/types/game";
 import RegelGuru from "@/components/RegelGuru";
-import type { Player, PlaySession, Loan, AchievementKey } from "@/types/game";
+import type { Player, PlaySession, Loan, AchievementKey, Expansion, BggSearchResult } from "@/types/game";
+import { searchExpansions, searchExpansionsByName } from "@/services/bgg-client";
 import { checkOnPlaySession } from "@/services/achievements";
 import AchievementToast from "@/components/AchievementToast";
 
@@ -41,6 +42,11 @@ function GameDetailContent() {
   const [saleLoading, setSaleLoading] = useState(false);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [saleToast, setSaleToast] = useState<string | null>(null);
+  const [expansions, setExpansions] = useState<Expansion[]>([]);
+  const [showExpansionSearch, setShowExpansionSearch] = useState(false);
+  const [expansionSearchResults, setExpansionSearchResults] = useState<BggSearchResult[]>([]);
+  const [expansionSearchLoading, setExpansionSearchLoading] = useState(false);
+  const [expansionManualName, setExpansionManualName] = useState("");
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
@@ -50,13 +56,15 @@ function GameDetailContent() {
       getAllPlayers(),
       isAiConfigured(),
       getActiveLoanByGame(id),
+      getExpansionsByGame(id),
     ])
-      .then(([data, sess, pl, aiOk, loan]) => {
+      .then(([data, sess, pl, aiOk, loan, exps]) => {
         setGame(data ?? null);
         setSessions(sess);
         setPlayers(pl);
         setAiAvailable(aiOk);
         setActiveLoan(loan ?? null);
+        setExpansions(exps);
       })
       .catch(() => setGame(null))
       .finally(() => setLoading(false));
@@ -227,6 +235,61 @@ function GameDetailContent() {
     }
   }
 
+  async function handleSearchExpansions() {
+    if (!game?.bggId) return;
+    setShowExpansionSearch(true);
+    setExpansionSearchLoading(true);
+    setExpansionSearchResults([]);
+    try {
+      let results = await searchExpansions(game.bggId);
+      if (results.length === 0) {
+        results = await searchExpansionsByName(game.name);
+      }
+      // Filter out already-added expansions
+      const existingBggIds = new Set(expansions.map((e) => e.bggId).filter(Boolean));
+      setExpansionSearchResults(results.filter((r) => !existingBggIds.has(r.bggId)));
+    } catch {
+      setExpansionSearchResults([]);
+    } finally {
+      setExpansionSearchLoading(false);
+    }
+  }
+
+  async function handleAddExpansionFromBgg(result: BggSearchResult) {
+    if (!game) return;
+    const exp = await createExpansion({
+      parentGameId: game.id,
+      bggId: result.bggId,
+      name: result.name,
+      owned: false,
+    });
+    setExpansions((prev) => [...prev, exp]);
+    setExpansionSearchResults((prev) => prev.filter((r) => r.bggId !== result.bggId));
+  }
+
+  async function handleAddExpansionManual() {
+    if (!game || !expansionManualName.trim()) return;
+    const exp = await createExpansion({
+      parentGameId: game.id,
+      name: expansionManualName.trim(),
+      owned: false,
+    });
+    setExpansions((prev) => [...prev, exp]);
+    setExpansionManualName("");
+  }
+
+  async function handleToggleExpansionOwned(exp: Expansion) {
+    const updated = await updateExpansion(exp.id, { owned: !exp.owned });
+    if (updated) {
+      setExpansions((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+    }
+  }
+
+  async function handleDeleteExpansion(id: number) {
+    await deleteExpansion(id);
+    setExpansions((prev) => prev.filter((e) => e.id !== id));
+  }
+
   function toggleSaleExtra(extra: SaleExtra) {
     setSaleExtras((prev) =>
       prev.includes(extra) ? prev.filter((e) => e !== extra) : [...prev, extra]
@@ -374,6 +437,123 @@ function GameDetailContent() {
               <span className="inline-flex items-center rounded-xl bg-warm-50 px-3.5 py-2 text-sm text-warm-500 ring-1 ring-warm-200/60">
                 Zuletzt: {new Date(game.lastPlayed).toLocaleDateString("de-DE")}
               </span>
+            )}
+          </div>
+
+          {/* Erweiterungen */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-warm-500 uppercase tracking-wider">
+                Erweiterungen {expansions.length > 0 && `(${expansions.filter((e) => e.owned).length}/${expansions.length})`}
+              </h3>
+              <button
+                onClick={game.bggId ? handleSearchExpansions : () => setShowExpansionSearch(true)}
+                className="text-xs font-medium text-forest hover:text-forest-dark transition-colors"
+              >
+                + Hinzufügen
+              </button>
+            </div>
+
+            {expansions.length > 0 && (
+              <div className="mt-2.5 space-y-1.5">
+                {expansions.map((exp) => (
+                  <div key={exp.id} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 ${exp.owned ? "bg-forest-light" : "bg-warm-50 ring-1 ring-warm-200/60"}`}>
+                    <button
+                      onClick={() => handleToggleExpansionOwned(exp)}
+                      className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 transition-colors ${
+                        exp.owned
+                          ? "border-forest bg-forest text-white"
+                          : "border-warm-300 bg-white hover:border-warm-400"
+                      }`}
+                      aria-label={exp.owned ? "Als nicht besessen markieren" : "Als besessen markieren"}
+                    >
+                      {exp.owned && (
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </button>
+                    <span className={`flex-1 text-sm ${exp.owned ? "text-forest font-medium" : "text-warm-600"}`}>
+                      {exp.name}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteExpansion(exp.id)}
+                      className="flex-shrink-0 text-warm-400 hover:text-red-500 transition-colors"
+                      aria-label={`${exp.name} entfernen`}
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+                {expansions.some((e) => !e.owned) && (
+                  <p className="mt-1 text-[11px] text-warm-400 italic">
+                    Nicht angehakte = Wunschliste
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Expansion Search Modal */}
+            {showExpansionSearch && (
+              <div className="mt-3 rounded-2xl border border-warm-200/80 bg-surface p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-warm-900">Erweiterung hinzufügen</h4>
+                  <button
+                    onClick={() => { setShowExpansionSearch(false); setExpansionSearchResults([]); setExpansionManualName(""); }}
+                    className="text-warm-400 hover:text-warm-600"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {expansionSearchLoading && (
+                  <div className="flex items-center gap-2 py-4 justify-center">
+                    <div className="spinner" />
+                    <span className="text-sm text-warm-500">Suche Erweiterungen...</span>
+                  </div>
+                )}
+
+                {!expansionSearchLoading && expansionSearchResults.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto space-y-1 mb-3">
+                    {expansionSearchResults.map((r) => (
+                      <button
+                        key={r.bggId}
+                        onClick={() => handleAddExpansionFromBgg(r)}
+                        className="w-full text-left rounded-xl px-3 py-2 text-sm text-warm-700 hover:bg-warm-50 transition-colors"
+                      >
+                        {r.name}
+                        {r.yearpublished && <span className="text-warm-400 ml-1">({r.yearpublished})</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {!expansionSearchLoading && expansionSearchResults.length === 0 && game.bggId && (
+                  <p className="text-sm text-warm-500 mb-3">Keine Erweiterungen auf BGG gefunden.</p>
+                )}
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={expansionManualName}
+                    onChange={(e) => setExpansionManualName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddExpansionManual(); }}
+                    placeholder="Manuell hinzufügen..."
+                    className="flex-1 rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/10"
+                  />
+                  <button
+                    onClick={handleAddExpansionManual}
+                    disabled={!expansionManualName.trim()}
+                    className="rounded-xl bg-forest px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark active:scale-[0.98] disabled:opacity-50"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 

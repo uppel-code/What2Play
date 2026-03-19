@@ -267,6 +267,25 @@ export interface AchievementDefinition {
   icon: string;
 }
 
+// ─── Expansions ───
+
+export interface Expansion {
+  id: number;
+  parentGameId: number;
+  bggId: number | null;
+  name: string;
+  owned: boolean;
+  notes: string | null;
+}
+
+export interface CreateExpansionInput {
+  parentGameId: number;
+  bggId?: number | null;
+  name: string;
+  owned?: boolean;
+  notes?: string | null;
+}
+
 // ─── BGG Search Types ───
 
 export interface BggSearchResult {

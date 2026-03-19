@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup, PlaySession, ChatMessage, Loan, Achievement, AchievementKey } from "@/types/game";
+import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup, PlaySession, ChatMessage, Loan, Achievement, AchievementKey, Expansion, CreateExpansionInput } from "@/types/game";
 
 // ─── Database Definition ───
 
@@ -82,6 +82,15 @@ interface AchievementRecord {
   unlockedAt: string;
 }
 
+interface ExpansionRecord {
+  id: number;
+  parentGameId: number;
+  bggId: number | null;
+  name: string;
+  owned: boolean;
+  notes: string | null;
+}
+
 const db = new Dexie("What2PlayDB") as Dexie & {
   games: EntityTable<GameRecord, "id">;
   players: EntityTable<PlayerRecord, "id">;
@@ -90,6 +99,7 @@ const db = new Dexie("What2PlayDB") as Dexie & {
   chatMessages: EntityTable<ChatMessageRecord, "id">;
   loans: EntityTable<LoanRecord, "id">;
   achievements: EntityTable<AchievementRecord, "id">;
+  expansions: EntityTable<ExpansionRecord, "id">;
 };
 
 db.version(1).stores({
@@ -174,6 +184,17 @@ db.version(9).stores({
   return tx.table("games").toCollection().modify((game) => {
     if (game.forSale === undefined) game.forSale = false;
   });
+});
+
+db.version(10).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight, *mechanics",
+  players: "++id, name",
+  playGroups: "++id, name",
+  playSessions: "++id, gameId, playedAt",
+  chatMessages: "++id, gameId, createdAt",
+  loans: "++id, gameId, personName, returnedAt",
+  achievements: "++id, &key, unlockedAt",
+  expansions: "++id, parentGameId, bggId, name",
 });
 
 // ─── CRUD Operations ───
@@ -418,7 +439,7 @@ export async function getAllSessionsRaw(): Promise<PlaySession[]> {
 }
 
 export async function clearAllData(): Promise<void> {
-  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions, db.chatMessages, db.loans, db.achievements], async () => {
+  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions, db.chatMessages, db.loans, db.achievements, db.expansions], async () => {
     await db.games.clear();
     await db.players.clear();
     await db.playGroups.clear();
@@ -426,6 +447,7 @@ export async function clearAllData(): Promise<void> {
     await db.chatMessages.clear();
     await db.loans.clear();
     await db.achievements.clear();
+    await db.expansions.clear();
   });
 }
 
@@ -576,6 +598,49 @@ export async function getAllLoansRaw(): Promise<Loan[]> {
 }
 
 // ─── Achievement Operations ───
+
+// ─── Expansion Operations ───
+
+export async function createExpansion(data: CreateExpansionInput): Promise<Expansion> {
+  const record: Omit<ExpansionRecord, "id"> = {
+    parentGameId: data.parentGameId,
+    bggId: data.bggId ?? null,
+    name: data.name,
+    owned: data.owned !== false,
+    notes: data.notes ?? null,
+  };
+  const id = await db.expansions.add(record as ExpansionRecord);
+  return (await db.expansions.get(id))! as Expansion;
+}
+
+export async function getExpansionsByGame(parentGameId: number): Promise<Expansion[]> {
+  return db.expansions
+    .where("parentGameId")
+    .equals(parentGameId)
+    .sortBy("name") as Promise<Expansion[]>;
+}
+
+export async function updateExpansion(id: number, data: Partial<Omit<Expansion, "id" | "parentGameId">>): Promise<Expansion | undefined> {
+  const existing = await db.expansions.get(id);
+  if (!existing) return undefined;
+  await db.expansions.update(id, data);
+  return (await db.expansions.get(id))! as Expansion;
+}
+
+export async function deleteExpansion(id: number): Promise<boolean> {
+  const existing = await db.expansions.get(id);
+  if (!existing) return false;
+  await db.expansions.delete(id);
+  return true;
+}
+
+export async function getOwnedExpansionCount(parentGameId: number): Promise<number> {
+  return db.expansions
+    .where("parentGameId")
+    .equals(parentGameId)
+    .filter((e) => e.owned === true)
+    .count();
+}
 
 export async function getAchievement(key: AchievementKey): Promise<Achievement | undefined> {
   return db.achievements.where("key").equals(key).first() as Promise<Achievement | undefined>;
