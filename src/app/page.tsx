@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import GameCard from "@/components/GameCard";
 import FilterBar from "@/components/FilterBar";
+import QuickFilters from "@/components/QuickFilters";
 import RandomPicker from "@/components/RandomPicker";
 import type { Game, GameFilters } from "@/types/game";
 import { getAllGames } from "@/lib/db-client";
@@ -46,6 +47,13 @@ export default function CollectionPage() {
       window.removeEventListener("focus", handleFocus);
     };
   }, [loadGames]);
+
+  const recentlyPlayed = useMemo(() => {
+    return games
+      .filter((g) => g.lastPlayed)
+      .sort((a, b) => new Date(b.lastPlayed!).getTime() - new Date(a.lastPlayed!).getTime())
+      .slice(0, 3);
+  }, [games]);
 
   const filteredGames = useMemo(() => {
     return games.filter((game) => {
@@ -109,7 +117,36 @@ export default function CollectionPage() {
         )}
       </div>
 
-      <FilterBar filters={filters} onChange={setFilters} />
+      <QuickFilters filters={filters} onChange={setFilters} />
+
+      <div className="mt-3">
+        <FilterBar filters={filters} onChange={setFilters} />
+      </div>
+
+      {/* Zuletzt gespielt */}
+      {recentlyPlayed.length > 0 && Object.keys(filters).length === 0 && (
+        <div className="mt-5">
+          <h2 className="mb-3 font-display text-lg font-semibold text-warm-800">Zuletzt gespielt</h2>
+          <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+            {recentlyPlayed.map((game) => (
+              <Link
+                key={game.id}
+                href={`/game?id=${game.id}`}
+                className="group flex w-28 shrink-0 flex-col items-center gap-2"
+              >
+                <div className="h-20 w-20 overflow-hidden rounded-2xl border border-warm-200/80 bg-warm-100 transition-transform group-hover:scale-105">
+                  {game.thumbnail ? (
+                    <img src={game.thumbnail} alt={game.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-2xl text-warm-300">🎲</div>
+                  )}
+                </div>
+                <span className="line-clamp-2 text-center text-xs font-medium text-warm-700">{game.name}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {filteredGames.length === 0 ? (
         <div className="mt-16 text-center">
