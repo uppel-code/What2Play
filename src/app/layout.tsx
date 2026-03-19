@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Navigation from "@/components/Navigation";
+import Onboarding from "@/components/Onboarding";
 import ThemeProvider from "@/components/ThemeProvider";
 
 export const metadata: Metadata = {
@@ -23,6 +24,7 @@ export default function RootLayout({
     <html lang="de" suppressHydrationWarning>
       <body>
         <ThemeProvider>
+          <Onboarding />
           <Navigation />
           <main className="mx-auto max-w-6xl px-4 pb-28 pt-4 sm:px-6 sm:pb-10 sm:pt-8">
             {children}
