@@ -9,6 +9,12 @@ interface GameCardProps {
   onDelete?: (id: number) => void;
 }
 
+function daysSinceLastPlayed(lastPlayed: string | null): number | null {
+  if (!lastPlayed) return null;
+  const ms = Date.now() - new Date(lastPlayed).getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
 function complexityLabel(weight: number): string {
   if (weight <= 1.5) return "Leicht";
   if (weight <= 2.5) return "Mittel";
@@ -175,6 +181,11 @@ export default function GameCard({ game, onDelete }: GameCardProps) {
             {!game.lastPlayed && (
               <span className="absolute top-2.5 left-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-warm-600/70 text-[10px] text-white shadow-sm backdrop-blur-sm" title="Nie gespielt">
                 🕸️
+              </span>
+            )}
+            {game.lastPlayed && (daysSinceLastPlayed(game.lastPlayed) ?? 0) > 60 && (
+              <span className="absolute top-2.5 left-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-amber-dark/70 text-[10px] text-white shadow-sm backdrop-blur-sm" title={`${daysSinceLastPlayed(game.lastPlayed)} Tage nicht gespielt`}>
+                ⏳
               </span>
             )}
             {/* Desktop: delete button on hover */}

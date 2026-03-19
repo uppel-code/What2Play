@@ -96,7 +96,7 @@ export default function CollectionPage() {
   }, [games]);
 
   const filteredGames = useMemo(() => {
-    return games.filter((game) => {
+    const result = games.filter((game) => {
       if (filters.search) {
         const search = filters.search.toLowerCase();
         if (!game.name.toLowerCase().includes(search)) return false;
@@ -122,8 +122,27 @@ export default function CollectionPage() {
       if (filters.neverPlayed) {
         if (game.lastPlayed != null) return false;
       }
+      if (filters.longNotPlayed) {
+        if (!game.lastPlayed) return true; // never played counts as "lange her"
+        const daysSince = (Date.now() - new Date(game.lastPlayed).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSince <= 30) return false;
+      }
       return true;
     });
+
+    // Apply sorting
+    if (filters.sortBy === "lastPlayed") {
+      const dir = filters.sortDirection === "desc" ? -1 : 1;
+      result.sort((a, b) => {
+        // null lastPlayed = never played, sort to end for "newest first", start for "oldest first"
+        if (!a.lastPlayed && !b.lastPlayed) return 0;
+        if (!a.lastPlayed) return dir; // never played goes last (desc) or first (asc)
+        if (!b.lastPlayed) return -dir;
+        return dir * (new Date(a.lastPlayed).getTime() - new Date(b.lastPlayed).getTime());
+      });
+    }
+
+    return result;
   }, [games, filters]);
 
   if (loading) {

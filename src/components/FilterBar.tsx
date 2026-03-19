@@ -23,6 +23,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
     filters.minComplexity || filters.maxComplexity,
     filters.minAge,
     filters.tags?.length,
+    filters.sortBy,
   ].filter(Boolean).length;
 
   return (
@@ -119,6 +120,23 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
             <option value="10">ab 10+</option>
             <option value="12">ab 12+</option>
             <option value="14">ab 14+</option>
+          </FilterSelect>
+
+          <FilterSelect
+            label="Sortierung"
+            value={filters.sortBy === "lastPlayed" ? `lastPlayed-${filters.sortDirection || "asc"}` : ""}
+            onChange={(v) => {
+              if (v === "") {
+                onChange({ ...filters, sortBy: undefined, sortDirection: undefined });
+              } else {
+                const [, dir] = v.split("-");
+                onChange({ ...filters, sortBy: "lastPlayed", sortDirection: dir as "asc" | "desc" });
+              }
+            }}
+          >
+            <option value="">A–Z (Standard)</option>
+            <option value="lastPlayed-desc">Zuletzt gespielt ↓</option>
+            <option value="lastPlayed-asc">Zuletzt gespielt ↑</option>
           </FilterSelect>
 
           {/* Tag filter */}

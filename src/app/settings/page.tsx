@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getBggToken, setBggToken, isBggConfigured } from "@/services/bgg-client";
 import { getAiConfig, setAiConfig, clearAiConfig, isAiConfigured, getGameLanguage, setGameLanguage } from "@/services/ai-client";
 import type { AiProvider, GameLanguage } from "@/services/ai-client";
-import { getGameCount } from "@/lib/db-client";
+import { getGameCount, getAllGamesRaw, getAllPlayersRaw, getAllPlayGroupsRaw, getAllSessionsRaw, clearAllData, bulkImportData } from "@/lib/db-client";
 import { useTheme } from "@/components/ThemeProvider";
 import type { ThemeMode } from "@/services/theme";
+import { createBackup, downloadBackup, readFileAsText, parseBackup, getBackupPreview, type BackupData, type BackupPreview } from "@/services/backup";
+import { Preferences } from "@capacitor/preferences";
 
 export default function SettingsPage() {
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
@@ -27,6 +29,17 @@ export default function SettingsPage() {
 
   const [gameLanguage, setGameLang] = useState<GameLanguage>("de");
   const [langSaved, setLangSaved] = useState(false);
+
+  // Export/Import state
+  const [exporting, setExporting] = useState(false);
+  const [exportDone, setExportDone] = useState(false);
+  const [importPreview, setImportPreview] = useState<BackupPreview | null>(null);
+  const [importData, setImportData] = useState<BackupData | null>(null);
+  const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
+  const [importing, setImporting] = useState(false);
+  const [importDone, setImportDone] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -95,6 +108,90 @@ export default function SettingsPage() {
     openai: "OpenAI",
     claude: "Anthropic Claude",
   };
+
+  async function handleExport() {
+    setExporting(true);
+    setExportDone(false);
+    try {
+      const [games, players, playGroups, sessions] = await Promise.all([
+        getAllGamesRaw(),
+        getAllPlayersRaw(),
+        getAllPlayGroupsRaw(),
+        getAllSessionsRaw(),
+      ]);
+      const backup = await createBackup(games, players, playGroups, sessions);
+      downloadBackup(backup);
+      setExportDone(true);
+      setTimeout(() => setExportDone(false), 3000);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportError(null);
+    setImportDone(null);
+    try {
+      const text = await readFileAsText(file);
+      const data = parseBackup(text);
+      setImportData(data);
+      setImportPreview(getBackupPreview(data));
+      setImportMode("merge");
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Unbekannter Fehler beim Lesen der Datei.");
+      setImportData(null);
+      setImportPreview(null);
+    }
+    // Reset file input so the same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleImport() {
+    if (!importData) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      if (importMode === "replace") {
+        await clearAllData();
+      }
+      await bulkImportData(
+        importData.games,
+        importData.players,
+        importData.playGroups,
+        importData.playSessions
+      );
+      // Restore settings
+      if (importData.settings) {
+        if (importData.settings.language) {
+          await Preferences.set({ key: "game_language", value: importData.settings.language });
+          setGameLang(importData.settings.language as GameLanguage);
+        }
+        if (importData.settings.theme) {
+          await Preferences.set({ key: "theme_mode", value: importData.settings.theme });
+          setThemeMode(importData.settings.theme as ThemeMode);
+        }
+      }
+      const count = importData.games.length;
+      const sessionCount = importData.playSessions.length;
+      setImportDone(`${count} Spiele und ${sessionCount} Sessions importiert!`);
+      setImportData(null);
+      setImportPreview(null);
+      // Refresh game count
+      setGameCount(await getGameCount());
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Fehler beim Import.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function cancelImport() {
+    setImportData(null);
+    setImportPreview(null);
+    setImportError(null);
+  }
 
   async function handleLanguageChange(lang: GameLanguage) {
     setGameLang(lang);
@@ -362,6 +459,180 @@ export default function SettingsPage() {
               {m === "light" ? "Hell" : m === "dark" ? "Dunkel" : "System"}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Daten — Export / Import */}
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-forest-light">
+            <svg className="h-5 w-5 text-forest" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="font-display text-lg font-bold text-warm-900">Daten</h2>
+            <p className="text-sm text-warm-500">
+              Sammlung exportieren oder aus Backup wiederherstellen
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {/* Export */}
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-forest px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md disabled:opacity-50 active:scale-[0.98]"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            {exporting ? "Exportiere..." : "Sammlung exportieren"}
+          </button>
+
+          {exportDone && (
+            <div className="flex items-center gap-2 rounded-xl bg-forest-light px-4 py-2.5 text-sm font-medium text-forest">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Backup heruntergeladen!
+            </div>
+          )}
+
+          {/* Import */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+            className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-warm-300 px-5 py-3 text-sm font-semibold text-warm-700 transition-all hover:border-forest hover:text-forest hover:bg-forest-light/30 disabled:opacity-50 active:scale-[0.98]"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Sammlung importieren
+          </button>
+
+          {/* Import Error */}
+          {importError && (
+            <div className="flex items-center gap-2 rounded-xl bg-coral/10 px-4 py-2.5 text-sm font-medium text-coral">
+              <svg className="h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              {importError}
+            </div>
+          )}
+
+          {/* Import Success */}
+          {importDone && (
+            <div className="flex items-center gap-2 rounded-xl bg-forest-light px-4 py-2.5 text-sm font-medium text-forest">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              {importDone}
+            </div>
+          )}
+
+          {/* Import Preview Modal */}
+          {importPreview && (
+            <div className="rounded-xl border border-warm-200 bg-warm-50 p-4 space-y-4">
+              <div>
+                <h3 className="font-display text-base font-bold text-warm-900 mb-1">Backup-Vorschau</h3>
+                <p className="text-xs text-warm-500">
+                  Vom {new Date(importPreview.exportedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "long", year: "numeric" })}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-lg bg-surface px-3 py-2 text-center">
+                  <div className="font-bold text-warm-900">{importPreview.gameCount}</div>
+                  <div className="text-xs text-warm-500">Spiele</div>
+                </div>
+                <div className="rounded-lg bg-surface px-3 py-2 text-center">
+                  <div className="font-bold text-warm-900">{importPreview.sessionCount}</div>
+                  <div className="text-xs text-warm-500">Sessions</div>
+                </div>
+                <div className="rounded-lg bg-surface px-3 py-2 text-center">
+                  <div className="font-bold text-warm-900">{importPreview.playerCount}</div>
+                  <div className="text-xs text-warm-500">Spieler</div>
+                </div>
+                <div className="rounded-lg bg-surface px-3 py-2 text-center">
+                  <div className="font-bold text-warm-900">{importPreview.playGroupCount}</div>
+                  <div className="text-xs text-warm-500">Gruppen</div>
+                </div>
+              </div>
+
+              {/* Import Mode Selection */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-warm-500 uppercase tracking-wider">Import-Modus</label>
+                <div className="flex gap-1.5 rounded-xl bg-warm-100 p-1">
+                  <button
+                    onClick={() => setImportMode("merge")}
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                      importMode === "merge"
+                        ? "bg-surface text-warm-900 shadow-sm"
+                        : "text-warm-500 hover:text-warm-700"
+                    }`}
+                  >
+                    Bestehende Daten behalten
+                  </button>
+                  <button
+                    onClick={() => setImportMode("replace")}
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                      importMode === "replace"
+                        ? "bg-coral text-white shadow-sm"
+                        : "text-warm-500 hover:text-warm-700"
+                    }`}
+                  >
+                    Alles ersetzen
+                  </button>
+                </div>
+                <p className="text-xs text-warm-500">
+                  {importMode === "merge"
+                    ? "Neue Daten werden zu deiner bestehenden Sammlung hinzugefügt. Bei gleichen IDs werden Einträge aktualisiert."
+                    : "Alle bestehenden Daten werden gelöscht und durch das Backup ersetzt."}
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={cancelImport}
+                  disabled={importing}
+                  className="flex-1 rounded-xl border border-warm-200 px-4 py-2.5 text-sm font-semibold text-warm-600 transition-all hover:bg-warm-100 disabled:opacity-50"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  onClick={handleImport}
+                  disabled={importing}
+                  className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all disabled:opacity-50 active:scale-[0.98] ${
+                    importMode === "replace"
+                      ? "bg-coral hover:bg-coral-dark"
+                      : "bg-forest hover:bg-forest-dark"
+                  }`}
+                >
+                  {importing ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Importiere...
+                    </span>
+                  ) : (
+                    `${importPreview.gameCount} Spiele, ${importPreview.sessionCount} Sessions importieren`
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

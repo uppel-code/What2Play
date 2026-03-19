@@ -60,6 +60,14 @@ const QUICK_FILTERS: QuickFilter[] = [
     isActive: (f) => f.neverPlayed === true,
     remove: (f) => ({ ...f, neverPlayed: undefined }),
   },
+  {
+    id: "long-not-played",
+    label: "Lange her",
+    icon: "⏳",
+    apply: (f) => ({ ...f, longNotPlayed: true }),
+    isActive: (f) => f.longNotPlayed === true,
+    remove: (f) => ({ ...f, longNotPlayed: undefined }),
+  },
 ];
 
 interface QuickFiltersProps {
@@ -119,6 +127,8 @@ function conflictsWith(a: QuickFilter, b: QuickFilter): boolean {
     party: ["2-players"],
     easy: ["expert"],
     expert: ["easy"],
+    dusty: ["long-not-played"],
+    "long-not-played": ["dusty"],
   };
   return conflicts[a.id]?.includes(b.id) ?? false;
 }

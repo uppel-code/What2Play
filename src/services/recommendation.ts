@@ -6,19 +6,19 @@ import type { Game, TodayPlayParams, ScoredGame, ScoreBreakdown } from "@/types/
  *
  * Scoring breakdown (max 100 points):
  * - Player count fit:    0–35 points
- * - Time fit:            0–30 points
- * - Complexity fit:      0–20 points
+ * - Time fit:            0–25 points
+ * - Complexity fit:      0–18 points
  * - Favorite bonus:         +5 points
- * - "Long not played" bonus: +5 points
+ * - "Long not played" bonus: +12 points (boosted: >14 days triggers bonus)
  * - Tag bonus:              +5 points
  */
 
 const WEIGHTS = {
   playerFit: 35,
-  timeFit: 30,
-  complexityFit: 20,
+  timeFit: 25,
+  complexityFit: 18,
   favoriteBonus: 5,
-  lastPlayedBonus: 5,
+  lastPlayedBonus: 12,
   tagBonus: 5,
 } as const;
 
@@ -110,12 +110,13 @@ function calcFavoriteBonus(game: Game): number {
   return game.favorite ? WEIGHTS.favoriteBonus : 0;
 }
 
-/** Long not played: bonus if >30 days since last play */
+/** Long not played: bonus if >14 days since last play, scaled by time */
 function calcLastPlayedBonus(game: Game): number {
-  if (!game.lastPlayed) return WEIGHTS.lastPlayedBonus; // Never played = bonus
+  if (!game.lastPlayed) return WEIGHTS.lastPlayedBonus; // Never played = full bonus
   const daysSince = daysBetween(new Date(game.lastPlayed), new Date());
   if (daysSince > 90) return WEIGHTS.lastPlayedBonus;
-  if (daysSince > 30) return Math.round(WEIGHTS.lastPlayedBonus * 0.6);
+  if (daysSince > 30) return Math.round(WEIGHTS.lastPlayedBonus * 0.75);
+  if (daysSince > 14) return Math.round(WEIGHTS.lastPlayedBonus * 0.5);
   return 0;
 }
 

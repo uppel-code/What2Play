@@ -97,6 +97,9 @@ export interface GameFilters {
   minAge?: number;
   tags?: string[];
   neverPlayed?: boolean;
+  longNotPlayed?: boolean;       // >30 days since last play
+  sortBy?: "name" | "lastPlayed";
+  sortDirection?: "asc" | "desc"; // for lastPlayed sorting
 }
 
 export interface TodayPlayParams {

@@ -298,6 +298,58 @@ export async function deletePlaySession(id: number): Promise<boolean> {
   return true;
 }
 
+// ─── Bulk Operations (Export/Import) ───
+
+export async function getAllGamesRaw(): Promise<Game[]> {
+  return db.games.toArray();
+}
+
+export async function getAllPlayersRaw(): Promise<Player[]> {
+  const records = await db.players.toArray();
+  return records.map((r) => ({
+    id: r.id,
+    name: r.name,
+    maxComplexity: r.maxComplexity ?? undefined,
+    preferredDuration: r.preferredDuration ?? undefined,
+  }));
+}
+
+export async function getAllPlayGroupsRaw(): Promise<PlayGroup[]> {
+  return db.playGroups.toArray();
+}
+
+export async function getAllSessionsRaw(): Promise<PlaySession[]> {
+  return db.playSessions.toArray();
+}
+
+export async function clearAllData(): Promise<void> {
+  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions], async () => {
+    await db.games.clear();
+    await db.players.clear();
+    await db.playGroups.clear();
+    await db.playSessions.clear();
+  });
+}
+
+export async function bulkImportData(
+  games: Game[],
+  players: Player[],
+  playGroups: PlayGroup[],
+  playSessions: PlaySession[]
+): Promise<void> {
+  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions], async () => {
+    if (games.length > 0) await db.games.bulkPut(games as unknown as GameRecord[]);
+    if (players.length > 0) await db.players.bulkPut(players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      maxComplexity: p.maxComplexity ?? null,
+      preferredDuration: p.preferredDuration ?? null,
+    })));
+    if (playGroups.length > 0) await db.playGroups.bulkPut(playGroups as unknown as PlayGroupRecord[]);
+    if (playSessions.length > 0) await db.playSessions.bulkPut(playSessions as unknown as PlaySessionRecord[]);
+  });
+}
+
 export async function getPlayStats(): Promise<{
   totalPlayed: number;
   thisWeekCount: number;
