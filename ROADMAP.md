@@ -41,11 +41,17 @@
 - [x] Mechanics search + Coop filter
 - [x] Improved "Heute spielen" with categories
 
-### v0.5 - Quick Rules & Help (NEU!)
+### v0.5 - Quick Rules & Help (IN ARBEIT)
 - [ ] 🎲 "Wie ging das nochmal?" Button auf Spieldetails
 - [ ] AI-generierte Regel-Kurzfassung
 - [ ] YouTube Erklärvideo-Links (BGG/YouTube API)
 - [ ] "Regeln vergessen?" Badge für lange nicht gespielte Spiele
+- [ ] 📄 Link zu Original-Regeln (PDF via BGG/Hersteller)
+- [ ] 💬 **REGELGURU** - Integrierter KI-Chat pro Spiel!
+  - Chat-Interface direkt auf Spieldetails
+  - Kontext automatisch: "Du spielst [Spiel]"
+  - Fragen wie "Wie viele Karten?" sofort beantwortet
+  - Nutzt konfigurierten AI-Provider
 
 ### v0.5 - Smart Recommendations
 - [ ] Improve "Heute spielen" algorithm

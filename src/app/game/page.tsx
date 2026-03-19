@@ -6,6 +6,8 @@ import Link from "next/link";
 import type { Game } from "@/types/game";
 import { PREDEFINED_TAGS, COMMON_MECHANICS } from "@/types/game";
 import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPlayers } from "@/lib/db-client";
+import { generateQuickRules, isAiConfigured } from "@/services/ai-client";
+import { COMMON_MECHANICS as AI_MECHANICS } from "@/types/game";
 import type { Player, PlaySession } from "@/types/game";
 
 function GameDetailContent() {
@@ -15,6 +17,11 @@ function GameDetailContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showSessionModal, setShowSessionModal] = useState(false);
+  const [showQuickRules, setShowQuickRules] = useState(false);
+  const [quickRulesText, setQuickRulesText] = useState<string | null>(null);
+  const [quickRulesLoading, setQuickRulesLoading] = useState(false);
+  const [quickRulesError, setQuickRulesError] = useState<string | null>(null);
+  const [aiAvailable, setAiAvailable] = useState(false);
   const [sessions, setSessions] = useState<PlaySession[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
 
@@ -24,11 +31,13 @@ function GameDetailContent() {
       getGameById(id),
       getSessionsByGame(id),
       getAllPlayers(),
+      isAiConfigured(),
     ])
-      .then(([data, sess, pl]) => {
+      .then(([data, sess, pl, aiOk]) => {
         setGame(data ?? null);
         setSessions(sess);
         setPlayers(pl);
+        setAiAvailable(aiOk);
       })
       .catch(() => setGame(null))
       .finally(() => setLoading(false));
@@ -75,6 +84,33 @@ function GameDetailContent() {
     const updated = await updateGame(game.id, { lastPlayed: new Date().toISOString().split("T")[0] });
     if (updated) setGame(updated);
     setSaving(false);
+  }
+
+  async function openQuickRules() {
+    if (!game) return;
+    setShowQuickRules(true);
+    setQuickRulesError(null);
+    if (quickRulesText) return; // already loaded
+    setQuickRulesLoading(true);
+    try {
+      const mechanicLabels = game.mechanics.map((m) => {
+        const known = AI_MECHANICS.find((k) => k.value === m);
+        return known ? known.label : m;
+      });
+      const text = await generateQuickRules(game.name, mechanicLabels);
+      setQuickRulesText(text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      if (msg === "AI_NOT_CONFIGURED") {
+        setQuickRulesError("AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
+      } else if (msg === "AI_RATE_LIMIT") {
+        setQuickRulesError("Zu viele Anfragen. Bitte versuche es in einer Minute erneut.");
+      } else {
+        setQuickRulesError("Regeln konnten nicht geladen werden. Bitte versuche es erneut.");
+      }
+    } finally {
+      setQuickRulesLoading(false);
+    }
   }
 
   if (loading) {
@@ -188,6 +224,14 @@ function GameDetailContent() {
             >
               Gespielt!
             </button>
+            {aiAvailable && (
+              <button
+                onClick={openQuickRules}
+                className="rounded-xl bg-amber-light px-4 py-2 text-sm font-semibold text-amber-dark shadow-sm transition-all hover:shadow-md active:scale-[0.98]"
+              >
+                🎲 Wie ging das nochmal?
+              </button>
+            )}
             <Link
               href={`/game/history?id=${game.id}`}
               className="rounded-xl bg-warm-100 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
@@ -316,6 +360,55 @@ function GameDetailContent() {
             setShowSessionModal(false);
           }}
         />
+      )}
+
+      {/* Quick Rules Modal */}
+      {showQuickRules && game && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setShowQuickRules(false)}>
+          <div className="mx-4 w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🎲</span>
+              <h2 className="font-display text-xl font-bold text-warm-900">Kurzregeln</h2>
+            </div>
+            <p className="mt-1 text-sm text-warm-500">{game.name}</p>
+
+            <div className="mt-5">
+              {quickRulesLoading && (
+                <div className="flex flex-col items-center gap-3 py-8">
+                  <div className="spinner" />
+                  <p className="text-sm text-warm-500">Regeln werden zusammengefasst...</p>
+                </div>
+              )}
+              {quickRulesError && (
+                <div className="rounded-xl bg-coral-light p-4 text-sm text-coral">
+                  {quickRulesError}
+                </div>
+              )}
+              {quickRulesText && (
+                <p className="text-sm leading-relaxed text-warm-800 whitespace-pre-line">
+                  {quickRulesText}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowQuickRules(false)}
+                className="flex-1 rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+              >
+                Schließen
+              </button>
+              <a
+                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(game.name + " Regeln erklärt")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
+              >
+                ▶ Video anschauen
+              </a>
+            </div>
+          </div>
+        </div>
       )}
 
       {saving && (

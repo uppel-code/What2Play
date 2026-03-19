@@ -422,6 +422,42 @@ function parseVerificationResponse(text: string): VerificationResult {
   }
 }
 
+// ─── Quick Rules ───
+
+export async function generateQuickRules(gameName: string, mechanics: string[]): Promise<string> {
+  const config = await getAiConfig();
+  if (!config) throw new Error("AI_NOT_CONFIGURED");
+
+  const mechanicsHint = mechanics.length > 0 ? `\nDas Spiel nutzt folgende Mechaniken: ${mechanics.join(", ")}.` : "";
+
+  const prompt = `Du bist ein erfahrener Brettspiel-Erklärer. Fasse die wichtigsten Regeln von "${gameName}" in 5–7 kurzen Sätzen zusammen.${mechanicsHint}
+
+Erkläre:
+- Das Spielziel
+- Den grundlegenden Spielablauf (was macht man in seinem Zug?)
+- Die wichtigste(n) Gewinnbedingung(en)
+
+Schreibe auf Deutsch, klar und verständlich. Keine Überschriften, nur Fließtext. Beginne direkt mit dem Spielziel.`;
+
+  let responseText: string;
+
+  switch (config.provider) {
+    case "gemini":
+      responseText = await callGeminiText(config.apiKey, prompt);
+      break;
+    case "openai":
+      responseText = await callOpenAIText(config.apiKey, prompt);
+      break;
+    case "claude":
+      responseText = await callClaudeText(config.apiKey, prompt);
+      break;
+    default:
+      throw new Error("UNKNOWN_PROVIDER");
+  }
+
+  return responseText.trim();
+}
+
 // ─── Response Parsing ───
 
 function parseAiResponse(text: string): RecognizedGame[] {
