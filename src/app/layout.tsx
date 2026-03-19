@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import Navigation from "@/components/Navigation";
+import BottomTabBar from "@/components/BottomTabBar";
 import Onboarding from "@/components/Onboarding";
 import ThemeProvider from "@/components/ThemeProvider";
 import SwipeBack from "@/components/SwipeBack";
@@ -27,7 +27,7 @@ export default function RootLayout({
         <ThemeProvider>
           <Onboarding />
           <SwipeBack />
-          <Navigation />
+          <BottomTabBar />
           <main className="mx-auto max-w-6xl px-4 pb-28 pt-4 sm:px-6 sm:pb-10 sm:pt-8">
             {children}
           </main>
