@@ -356,7 +356,7 @@ async function callGeminiText(apiKey: string, prompt: string): Promise<string> {
 
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
+    generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
   };
 
   const { status, data } = await aiPost(url, body, {});
@@ -372,8 +372,8 @@ async function callOpenAIText(apiKey: string, prompt: string): Promise<string> {
   const body = {
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: prompt }],
-    max_tokens: 512,
-    temperature: 0.1,
+    max_tokens: 2048,
+    temperature: 0.4,
   };
 
   const { status, data } = await aiPost(url, body, { Authorization: `Bearer ${apiKey}` });
@@ -388,7 +388,8 @@ async function callClaudeText(apiKey: string, prompt: string): Promise<string> {
 
   const body = {
     model: "claude-sonnet-4-20250514",
-    max_tokens: 512,
+    max_tokens: 2048,
+    temperature: 0.4,
     messages: [{ role: "user", content: prompt }],
   };
 
@@ -448,6 +449,7 @@ WICHTIG: Sei SPEZIFISCH für dieses Spiel! Keine generischen Aussagen wie "samml
 **Oft vergessen:**
 • 2-3 Regeln die häufig falsch gespielt werden
 
+Beginne DIREKT mit dem Inhalt. Keine Begrüßung, keine Einleitung wie "Hallo" oder "Als Experte".
 Antworte mit 150-250 Wörtern. Deutsch. Nutze • für Listen.`;
 
   let responseText: string;
@@ -485,8 +487,8 @@ export async function askRuleQuestion(
   const config = await getAiConfig();
   if (!config) throw new Error("AI_NOT_CONFIGURED");
 
-  const mechanicsHint = mechanics.length > 0 ? ` Mechaniken: ${mechanics.join(", ")}.` : "";
-  const systemPrompt = `Du bist der Regelguru für "${gameName}".${mechanicsHint} Antworte kurz und präzise auf Deutsch. Nutze • für Aufzählungen. Keine Floskeln.`;
+  const mechanicsHint = mechanics.length > 0 ? ` Das Spiel nutzt folgende Mechaniken: ${mechanics.join(", ")}.` : "";
+  const systemPrompt = `Du bist ein Regelexperte für das Brettspiel "${gameName}".${mechanicsHint} Antworte NUR basierend auf den offiziellen Regeln. Wenn du dir nicht sicher bist, sage ehrlich dass du dir nicht 100% sicher bist und empfehle die offizielle Anleitung zu prüfen. ERFINDE KEINE Regeln. Antworte kurz und präzise auf Deutsch. Nutze • für Aufzählungen. Keine Floskeln.`;
 
   // Build conversation with last 5 messages for context
   const recentHistory = history.slice(-5);
