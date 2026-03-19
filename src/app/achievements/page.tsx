@@ -48,6 +48,23 @@ export default function AchievementsPage() {
         </div>
       )}
 
+      {/* Year Review Link */}
+      <Link
+        href="/year-review"
+        className="flex items-center justify-between rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 shadow-sm transition-all hover:shadow-md dark:border-amber-700 dark:bg-amber-900/30"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">📊</span>
+          <div>
+            <p className="font-display font-bold text-warm-900">
+              Dein Spielejahr {new Date().getFullYear()}
+            </p>
+            <p className="text-xs text-warm-500">Jährlicher Rückblick ansehen</p>
+          </div>
+        </div>
+        <span className="text-warm-400">→</span>
+      </Link>
+
       {/* Badge grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
         {ACHIEVEMENT_DEFINITIONS.map((def) => {
