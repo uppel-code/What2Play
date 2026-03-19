@@ -761,7 +761,7 @@ interface PhotoScanResult {
   recognized: RecognizedGame;
   bggId: number;
   name: string;
-  status: "pending" | "fetching" | "verifying" | "found" | "mismatch" | "not_found" | "imported" | "skipped" | "failed";
+  status: "pending" | "fetching" | "searching" | "verifying" | "found" | "mismatch" | "not_found" | "imported" | "skipped" | "failed";
   thumbnail?: string | null;
   yearpublished?: number | null;
   selected: boolean;
@@ -924,9 +924,53 @@ function PhotoScanTab() {
               );
             }
           } else {
+            // BGG ID not found — auto-search by name as fallback
             setResults((prev) =>
-              prev.map((r, idx) => (idx === i ? { ...r, status: "not_found" } : r))
+              prev.map((r, idx) => (idx === i ? { ...r, status: "searching" } : r))
             );
+            try {
+              const searchResults = await bggSearch(game.name);
+              if (searchResults.length > 0) {
+                const bestMatch = searchResults[0];
+                const retryData = await fetchBggThing(bestMatch.bggId);
+                if (retryData) {
+                  setResults((prev) =>
+                    prev.map((r, idx) => (idx === i ? { ...r, bggId: bestMatch.bggId, status: "verifying", bggOriginalName: retryData.name } : r))
+                  );
+                  const verification = await verifyGameMatch(game.name, retryData.name, retryData.thumbnail);
+                  if (verification.isMatch) {
+                    const finalName = verification.suggestedName || retryData.name;
+                    setResults((prev) =>
+                      prev.map((r, idx) =>
+                        idx === i
+                          ? { ...r, bggId: bestMatch.bggId, name: finalName, thumbnail: retryData.thumbnail, yearpublished: retryData.yearpublished, status: "found", verification, bggOriginalName: retryData.name }
+                          : r
+                      )
+                    );
+                  } else {
+                    setResults((prev) =>
+                      prev.map((r, idx) =>
+                        idx === i
+                          ? { ...r, bggId: bestMatch.bggId, name: game.name, thumbnail: retryData.thumbnail, yearpublished: retryData.yearpublished, status: "mismatch", verification, bggOriginalName: retryData.name, selected: false }
+                          : r
+                      )
+                    );
+                  }
+                } else {
+                  setResults((prev) =>
+                    prev.map((r, idx) => (idx === i ? { ...r, status: "not_found" } : r))
+                  );
+                }
+              } else {
+                setResults((prev) =>
+                  prev.map((r, idx) => (idx === i ? { ...r, status: "not_found" } : r))
+                );
+              }
+            } catch {
+              setResults((prev) =>
+                prev.map((r, idx) => (idx === i ? { ...r, status: "not_found" } : r))
+              );
+            }
           }
         } catch {
           setResults((prev) =>
@@ -949,6 +993,59 @@ function PhotoScanTab() {
     } finally {
       setAnalyzing(false);
       setAnalyzeProgress("");
+    }
+  }
+
+  async function handleRetrySearch(index: number) {
+    const r = results[index];
+    if (!r) return;
+
+    setResults((prev) =>
+      prev.map((res, idx) => (idx === index ? { ...res, status: "searching" } : res))
+    );
+
+    try {
+      const searchResults = await bggSearch(r.recognized.name);
+      if (searchResults.length > 0) {
+        const bestMatch = searchResults[0];
+        const data = await fetchBggThing(bestMatch.bggId);
+        if (data) {
+          setResults((prev) =>
+            prev.map((res, idx) => (idx === index ? { ...res, bggId: bestMatch.bggId, status: "verifying", bggOriginalName: data.name } : res))
+          );
+          const verification = await verifyGameMatch(r.recognized.name, data.name, data.thumbnail);
+          if (verification.isMatch) {
+            const finalName = verification.suggestedName || data.name;
+            setResults((prev) =>
+              prev.map((res, idx) =>
+                idx === index
+                  ? { ...res, bggId: bestMatch.bggId, name: finalName, thumbnail: data.thumbnail, yearpublished: data.yearpublished, status: "found", verification, bggOriginalName: data.name, selected: true }
+                  : res
+              )
+            );
+          } else {
+            setResults((prev) =>
+              prev.map((res, idx) =>
+                idx === index
+                  ? { ...res, bggId: bestMatch.bggId, name: r.recognized.name, thumbnail: data.thumbnail, yearpublished: data.yearpublished, status: "mismatch", verification, bggOriginalName: data.name, selected: false }
+                  : res
+              )
+            );
+          }
+        } else {
+          setResults((prev) =>
+            prev.map((res, idx) => (idx === index ? { ...res, status: "not_found" } : res))
+          );
+        }
+      } else {
+        setResults((prev) =>
+          prev.map((res, idx) => (idx === index ? { ...res, status: "not_found" } : res))
+        );
+      }
+    } catch {
+      setResults((prev) =>
+        prev.map((res, idx) => (idx === index ? { ...res, status: "not_found" } : res))
+      );
     }
   }
 
@@ -1222,7 +1319,7 @@ function PhotoScanTab() {
                   </div>
                 ) : (
                   <div className="flex-shrink-0 h-12 w-12 rounded-lg bg-warm-100 flex items-center justify-center">
-                    {r.status === "fetching" || r.status === "pending" || r.status === "verifying" ? (
+                    {r.status === "fetching" || r.status === "pending" || r.status === "verifying" || r.status === "searching" ? (
                       <div className="spinner" />
                     ) : (
                       <svg className="h-5 w-5 text-warm-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -1243,13 +1340,21 @@ function PhotoScanTab() {
                     {r.yearpublished && (
                       <span className="text-xs text-warm-500">({r.yearpublished})</span>
                     )}
-                    {(r.status === "fetching" || r.status === "verifying") && (
+                    {(r.status === "fetching" || r.status === "verifying" || r.status === "searching") && (
                       <span className="text-xs text-warm-400">
-                        {r.status === "verifying" ? "AI prüft..." : "Lade..."}
+                        {r.status === "verifying" ? "AI prüft..." : r.status === "searching" ? "Suche..." : "Lade..."}
                       </span>
                     )}
                     {r.status === "not_found" && (
-                      <span className="text-xs text-coral">ID nicht gefunden</span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="text-xs text-coral">Nicht gefunden</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRetrySearch(i); }}
+                          className="text-xs font-medium text-forest hover:text-forest-dark transition-colors underline"
+                        >
+                          Suchen
+                        </button>
+                      </span>
                     )}
                     {r.status === "mismatch" && (
                       <span className="text-xs text-amber-dark">⚠️ Unsicher</span>
