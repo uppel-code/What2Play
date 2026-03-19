@@ -377,17 +377,32 @@ function GameDetailContent() {
         />
       )}
 
-      {/* Quick Rules Modal */}
+      {/* Quick Rules Modal (Bottom-Sheet style) */}
       {showQuickRules && game && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setShowQuickRules(false)}>
-          <div className="mx-4 w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🎲</span>
-              <h2 className="font-display text-xl font-bold text-warm-900">Kurzregeln</h2>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setShowQuickRules(false)}>
+          <div className="mx-0 w-full max-w-lg max-h-[80vh] flex flex-col rounded-t-2xl bg-surface shadow-2xl sm:mx-4 sm:mb-auto sm:mt-auto sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* Sticky header with close button */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-warm-100 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🎲</span>
+                <div>
+                  <h2 className="font-display text-xl font-bold text-warm-900">Kurzregeln</h2>
+                  <p className="text-sm text-warm-500">{game.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowQuickRules(false)}
+                className="rounded-full p-2 text-warm-400 transition-colors hover:bg-warm-100 hover:text-warm-600"
+                aria-label="Schließen"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            <p className="mt-1 text-sm text-warm-500">{game.name}</p>
 
-            <div className="mt-5">
+            {/* Scrollable content */}
+            <div className="overflow-y-auto flex-1 px-6 py-4">
               {quickRulesLoading && (
                 <div className="flex flex-col items-center gap-3 py-8">
                   <div className="spinner" />
@@ -406,7 +421,8 @@ function GameDetailContent() {
               )}
             </div>
 
-            <div className="mt-6 flex flex-col gap-2">
+            {/* Sticky footer buttons */}
+            <div className="px-6 pb-5 pt-3 border-t border-warm-100 flex-shrink-0 flex flex-col gap-2">
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowQuickRules(false)}
