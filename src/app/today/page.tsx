@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import Link from "next/link";
 import ScoredGameCard from "@/components/ScoredGameCard";
 import { recommendGames, categorizeResults } from "@/services/recommendation";
-import type { Game, TodayPlayParams, ScoredGame, Mood, Player, PlayGroup, CategorizedRecommendations } from "@/types/game";
-import { getAllGames, getAllPlayers, getAllPlayGroups } from "@/lib/db-client";
+import type { Game, TodayPlayParams, ScoredGame, Mood, Player, PlayGroup, CategorizedRecommendations, GameNight } from "@/types/game";
+import { getAllGames, getAllPlayers, getAllPlayGroups, getUpcomingGameNight } from "@/lib/db-client";
 
 type CategoryTab = "alle" | "schnell" | "party" | "anspruchsvoll";
 type ViewMode = "flat" | "categorized";
@@ -39,6 +40,7 @@ export default function TodayPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [playGroups, setPlayGroups] = useState<PlayGroup[]>([]);
+  const [upcomingNight, setUpcomingNight] = useState<GameNight | null>(null);
   const [results, setResults] = useState<ScoredGame[] | null>(null);
   const [categorized, setCategorized] = useState<CategorizedRecommendations | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,11 +59,12 @@ export default function TodayPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
 
   useEffect(() => {
-    Promise.all([getAllGames(), getAllPlayers(), getAllPlayGroups()])
-      .then(([g, p, pg]) => {
+    Promise.all([getAllGames(), getAllPlayers(), getAllPlayGroups(), getUpcomingGameNight()])
+      .then(([g, p, pg, un]) => {
         setGames(g);
         setPlayers(p);
         setPlayGroups(pg);
+        setUpcomingNight(un ?? null);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -165,6 +168,47 @@ export default function TodayPage() {
             Neu gewürfelt!
           </div>
         )}
+      </div>
+
+      {/* Upcoming Game Night + link to game-night page */}
+      <div className="mt-5 flex gap-2">
+        <Link
+          href="/game-night"
+          className="flex-1 rounded-2xl border border-forest/20 bg-forest/5 p-4 transition-all hover:bg-forest/10"
+          data-testid="game-night-link"
+        >
+          {upcomingNight ? (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wider text-forest">
+                N&auml;chster Spieleabend
+              </p>
+              <p className="mt-1 font-display text-lg font-bold text-warm-900">
+                {upcomingNight.name}
+              </p>
+              <p className="mt-0.5 text-sm text-warm-500">
+                {new Date(upcomingNight.date).toLocaleDateString("de-DE", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+                {upcomingNight.gameIds.length > 0 && (
+                  <span> &middot; {upcomingNight.gameIds.length} Spiele</span>
+                )}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wider text-forest">
+                Spieleabend
+              </p>
+              <p className="mt-1 text-sm font-medium text-warm-600">
+                Plane deinen n&auml;chsten Spieleabend &rarr;
+              </p>
+            </>
+          )}
+        </Link>
       </div>
 
       {/* Mood buttons */}

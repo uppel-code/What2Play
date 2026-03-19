@@ -286,6 +286,24 @@ export interface CreateExpansionInput {
   notes?: string | null;
 }
 
+// ─── Game Night (Ich bring mit) ───
+
+export interface GameNight {
+  id: number;
+  name: string;
+  date: string; // ISO date-time string
+  playerIds: number[];
+  gameIds: number[];
+  createdAt: string;
+}
+
+export interface CreateGameNightInput {
+  name: string;
+  date: string;
+  playerIds?: number[];
+  gameIds?: number[];
+}
+
 // ─── BGG Search Types ───
 
 export interface BggSearchResult {

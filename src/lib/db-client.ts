@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup, PlaySession, ChatMessage, Loan, Achievement, AchievementKey, Expansion, CreateExpansionInput } from "@/types/game";
+import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup, PlaySession, ChatMessage, Loan, Achievement, AchievementKey, Expansion, CreateExpansionInput, GameNight, CreateGameNightInput } from "@/types/game";
 
 // ─── Database Definition ───
 
@@ -91,6 +91,15 @@ interface ExpansionRecord {
   notes: string | null;
 }
 
+interface GameNightRecord {
+  id: number;
+  name: string;
+  date: string;
+  playerIds: number[];
+  gameIds: number[];
+  createdAt: string;
+}
+
 const db = new Dexie("What2PlayDB") as Dexie & {
   games: EntityTable<GameRecord, "id">;
   players: EntityTable<PlayerRecord, "id">;
@@ -100,6 +109,7 @@ const db = new Dexie("What2PlayDB") as Dexie & {
   loans: EntityTable<LoanRecord, "id">;
   achievements: EntityTable<AchievementRecord, "id">;
   expansions: EntityTable<ExpansionRecord, "id">;
+  gameNights: EntityTable<GameNightRecord, "id">;
 };
 
 db.version(1).stores({
@@ -195,6 +205,18 @@ db.version(10).stores({
   loans: "++id, gameId, personName, returnedAt",
   achievements: "++id, &key, unlockedAt",
   expansions: "++id, parentGameId, bggId, name",
+});
+
+db.version(11).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight, *mechanics",
+  players: "++id, name",
+  playGroups: "++id, name",
+  playSessions: "++id, gameId, playedAt",
+  chatMessages: "++id, gameId, createdAt",
+  loans: "++id, gameId, personName, returnedAt",
+  achievements: "++id, &key, unlockedAt",
+  expansions: "++id, parentGameId, bggId, name",
+  gameNights: "++id, name, date",
 });
 
 // ─── CRUD Operations ───
@@ -439,7 +461,7 @@ export async function getAllSessionsRaw(): Promise<PlaySession[]> {
 }
 
 export async function clearAllData(): Promise<void> {
-  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions, db.chatMessages, db.loans, db.achievements, db.expansions], async () => {
+  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions, db.chatMessages, db.loans, db.achievements, db.expansions, db.gameNights], async () => {
     await db.games.clear();
     await db.players.clear();
     await db.playGroups.clear();
@@ -448,6 +470,7 @@ export async function clearAllData(): Promise<void> {
     await db.loans.clear();
     await db.achievements.clear();
     await db.expansions.clear();
+    await db.gameNights.clear();
   });
 }
 
@@ -656,5 +679,51 @@ export async function unlockAchievement(key: AchievementKey): Promise<Achievemen
   const now = new Date().toISOString();
   const id = await db.achievements.add({ key, unlockedAt: now } as AchievementRecord);
   return (await db.achievements.get(id))! as Achievement;
+}
+
+// ─── GameNight Operations (Ich bring mit) ───
+
+export async function createGameNight(data: CreateGameNightInput): Promise<GameNight> {
+  const now = new Date().toISOString();
+  const record: Omit<GameNightRecord, "id"> = {
+    name: data.name,
+    date: data.date,
+    playerIds: data.playerIds ?? [],
+    gameIds: data.gameIds ?? [],
+    createdAt: now,
+  };
+  const id = await db.gameNights.add(record as GameNightRecord);
+  return (await db.gameNights.get(id))! as GameNight;
+}
+
+export async function getAllGameNights(): Promise<GameNight[]> {
+  return db.gameNights.orderBy("date").reverse().toArray() as Promise<GameNight[]>;
+}
+
+export async function getGameNight(id: number): Promise<GameNight | undefined> {
+  return db.gameNights.get(id) as Promise<GameNight | undefined>;
+}
+
+export async function updateGameNight(id: number, data: Partial<Omit<GameNight, "id" | "createdAt">>): Promise<GameNight | undefined> {
+  const existing = await db.gameNights.get(id);
+  if (!existing) return undefined;
+  await db.gameNights.update(id, data);
+  return (await db.gameNights.get(id))! as GameNight;
+}
+
+export async function deleteGameNight(id: number): Promise<boolean> {
+  const existing = await db.gameNights.get(id);
+  if (!existing) return false;
+  await db.gameNights.delete(id);
+  return true;
+}
+
+export async function getUpcomingGameNight(): Promise<GameNight | undefined> {
+  const now = new Date().toISOString();
+  const upcoming = await db.gameNights
+    .where("date")
+    .aboveOrEqual(now.split("T")[0])
+    .sortBy("date");
+  return upcoming[0] as GameNight | undefined;
 }
 
