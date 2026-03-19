@@ -123,11 +123,15 @@ export interface GameFilters {
   sortDirection?: "asc" | "desc"; // for lastPlayed sorting
 }
 
+export type Mood = "relaxed" | "competitive" | "creative";
+
 export interface TodayPlayParams {
   playerCount: number;
   availableTime: number;       // minutes
   desiredComplexity: number;   // 1.0–5.0
   preferNewcomers?: boolean;
+  mood?: Mood;
+  maxGroupComplexity?: number; // derived from PlayGroup players
 }
 
 export interface ScoredGame extends Game {
@@ -142,6 +146,15 @@ export interface ScoreBreakdown {
   favoriteBonus: number;
   lastPlayedBonus: number;
   tagBonus: number;
+  moodBonus: number;
+}
+
+export type RecommendationCategory = "lange-nicht-gespielt" | "favoriten" | "wiederentdeckung";
+
+export interface CategorizedRecommendations {
+  langeNichtGespielt: ScoredGame[];
+  favoriten: ScoredGame[];
+  malWasAnderes: ScoredGame[];
 }
 
 // ─── Play Groups ───

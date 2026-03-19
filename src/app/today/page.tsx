@@ -2,17 +2,24 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import ScoredGameCard from "@/components/ScoredGameCard";
-import { recommendGames } from "@/services/recommendation";
-import type { Game, TodayPlayParams, ScoredGame } from "@/types/game";
-import { getAllGames } from "@/lib/db-client";
+import { recommendGames, categorizeResults } from "@/services/recommendation";
+import type { Game, TodayPlayParams, ScoredGame, Mood, Player, PlayGroup, CategorizedRecommendations } from "@/types/game";
+import { getAllGames, getAllPlayers, getAllPlayGroups } from "@/lib/db-client";
 
 type CategoryTab = "alle" | "schnell" | "party" | "anspruchsvoll";
+type ViewMode = "flat" | "categorized";
 
 const TABS: { key: CategoryTab; label: string; description: string }[] = [
   { key: "alle", label: "Alle", description: "Alle Empfehlungen" },
   { key: "schnell", label: "Schnell", description: "Unter 30 Minuten" },
   { key: "party", label: "Party", description: "5+ Spieler" },
   { key: "anspruchsvoll", label: "Anspruchsvoll", description: "Komplexität > 2.5" },
+];
+
+const MOODS: { key: Mood; emoji: string; label: string }[] = [
+  { key: "relaxed", emoji: "\u{1F60C}", label: "Entspannt" },
+  { key: "competitive", emoji: "\u{2694}\uFE0F", label: "Kompetitiv" },
+  { key: "creative", emoji: "\u{1F3A8}", label: "Kreativ" },
 ];
 
 function filterByCategory(games: ScoredGame[], tab: CategoryTab): ScoredGame[] {
@@ -30,9 +37,13 @@ function filterByCategory(games: ScoredGame[], tab: CategoryTab): ScoredGame[] {
 
 export default function TodayPage() {
   const [games, setGames] = useState<Game[]>([]);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [playGroups, setPlayGroups] = useState<PlayGroup[]>([]);
   const [results, setResults] = useState<ScoredGame[] | null>(null);
+  const [categorized, setCategorized] = useState<CategorizedRecommendations | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<CategoryTab>("alle");
+  const [viewMode, setViewMode] = useState<ViewMode>("categorized");
   const [shakeHint, setShakeHint] = useState(false);
   const lastShakeRef = useRef(0);
 
@@ -43,15 +54,47 @@ export default function TodayPage() {
     preferNewcomers: false,
   });
 
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+
   useEffect(() => {
-    getAllGames()
-      .then((data) => setGames(data))
+    Promise.all([getAllGames(), getAllPlayers(), getAllPlayGroups()])
+      .then(([g, p, pg]) => {
+        setGames(g);
+        setPlayers(p);
+        setPlayGroups(pg);
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  // When a PlayGroup is selected, derive playerCount and maxGroupComplexity
+  useEffect(() => {
+    if (selectedGroupId == null) {
+      setParams((prev) => ({ ...prev, maxGroupComplexity: undefined }));
+      return;
+    }
+
+    const group = playGroups.find((g) => g.id === selectedGroupId);
+    if (!group) return;
+
+    const groupPlayers = players.filter((p) => group.playerIds.includes(p.id));
+    const playerCount = groupPlayers.length || params.playerCount;
+
+    const complexities = groupPlayers
+      .map((p) => p.maxComplexity)
+      .filter((c): c is number => c != null && c > 0);
+    const maxGroupComplexity = complexities.length > 0 ? Math.min(...complexities) : undefined;
+
+    setParams((prev) => ({
+      ...prev,
+      playerCount,
+      maxGroupComplexity,
+    }));
+  }, [selectedGroupId, playGroups, players]);
 
   const handleSearch = useCallback(() => {
     const scored = recommendGames(games, params);
     setResults(scored);
+    setCategorized(categorizeResults(scored));
     setActiveTab("alle");
   }, [games, params]);
 
@@ -117,7 +160,6 @@ export default function TodayPage() {
             Finde das passende Spiel für eure Runde
           </p>
         </div>
-        {/* Shake hint toast */}
         {shakeHint && (
           <div className="animate-fade-up rounded-xl bg-forest px-3 py-1.5 text-xs font-medium text-white shadow-lg">
             Neu gewürfelt!
@@ -125,9 +167,61 @@ export default function TodayPage() {
         )}
       </div>
 
+      {/* Mood buttons */}
+      <div className="mt-5 flex gap-2">
+        {MOODS.map((mood) => (
+          <button
+            key={mood.key}
+            onClick={() =>
+              setParams((prev) => ({
+                ...prev,
+                mood: prev.mood === mood.key ? undefined : mood.key,
+              }))
+            }
+            className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all ${
+              params.mood === mood.key
+                ? "bg-forest text-white shadow-sm ring-2 ring-forest/20"
+                : "bg-warm-100 text-warm-600 hover:bg-warm-200"
+            }`}
+            data-testid={`mood-${mood.key}`}
+          >
+            <span className="mr-1.5">{mood.emoji}</span>
+            {mood.label}
+          </button>
+        ))}
+      </div>
+
       {/* Input form */}
-      <div className="mt-6 rounded-2xl border border-warm-200/80 bg-surface p-5">
+      <div className="mt-4 rounded-2xl border border-warm-200/80 bg-surface p-5">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {/* PlayGroup selector */}
+          {playGroups.length > 0 && (
+            <div className="col-span-2 sm:col-span-4">
+              <label className="mb-1.5 block text-xs font-semibold text-warm-500 uppercase tracking-wider">
+                Wer spielt mit?
+              </label>
+              <select
+                value={selectedGroupId ?? ""}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedGroupId(val ? Number(val) : null);
+                }}
+                className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+                data-testid="playgroup-select"
+              >
+                <option value="">Manuell wählen...</option>
+                {playGroups.map((g) => {
+                  const count = g.playerIds.length;
+                  return (
+                    <option key={g.id} value={g.id}>
+                      {g.name} ({count} Spieler)
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-warm-500 uppercase tracking-wider">
               Spieler
@@ -135,7 +229,8 @@ export default function TodayPage() {
             <select
               value={params.playerCount}
               onChange={(e) => setParams({ ...params, playerCount: Number(e.target.value) })}
-              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+              disabled={selectedGroupId != null}
+              className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3 py-2.5 text-sm font-medium text-warm-800 transition-colors focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10 disabled:opacity-50"
             >
               {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
                 <option key={n} value={n}>{n} Spieler</option>
@@ -209,51 +304,116 @@ export default function TodayPage() {
             <EmptyState />
           ) : (
             <>
-              {/* Category tabs */}
-              <div className="mb-5 flex gap-2 overflow-x-auto scrollbar-hide">
-                {TABS.map((tab) => {
-                  const count = filterByCategory(results, tab.key).length;
-                  return (
-                    <button
-                      key={tab.key}
-                      onClick={() => setActiveTab(tab.key)}
-                      className={`flex-shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
-                        activeTab === tab.key
-                          ? "bg-forest text-white shadow-sm"
-                          : "bg-warm-100 text-warm-600 hover:bg-warm-200"
-                      }`}
-                    >
-                      {tab.label}
-                      <span className={`ml-1.5 text-xs ${
-                        activeTab === tab.key ? "text-white/70" : "text-warm-400"
-                      }`}>
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
+              {/* View mode toggle */}
+              <div className="mb-4 flex items-center gap-2">
+                <button
+                  onClick={() => setViewMode("categorized")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                    viewMode === "categorized"
+                      ? "bg-forest text-white"
+                      : "bg-warm-100 text-warm-600 hover:bg-warm-200"
+                  }`}
+                >
+                  Kategorien
+                </button>
+                <button
+                  onClick={() => setViewMode("flat")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                    viewMode === "flat"
+                      ? "bg-forest text-white"
+                      : "bg-warm-100 text-warm-600 hover:bg-warm-200"
+                  }`}
+                >
+                  Rangliste
+                </button>
               </div>
 
-              {filteredResults && filteredResults.length === 0 ? (
-                <CategoryEmptyState tab={activeTab} onReset={() => setActiveTab("alle")} />
+              {viewMode === "categorized" && categorized ? (
+                <CategorizedView categorized={categorized} />
               ) : (
                 <>
-                  <h2 className="mb-4 font-display text-xl font-bold text-warm-900">
-                    {filteredResults!.length} passende{filteredResults!.length === 1 ? "s" : ""} Spiel{filteredResults!.length === 1 ? "" : "e"}
-                  </h2>
-                  <div className="space-y-3">
-                    {filteredResults!.map((game, i) => (
-                      <div key={game.id} className="animate-fade-up" style={{ animationDelay: `${i * 60}ms` }}>
-                        <ScoredGameCard game={game} rank={i + 1} />
-                      </div>
-                    ))}
+                  {/* Category tabs */}
+                  <div className="mb-5 flex gap-2 overflow-x-auto scrollbar-hide">
+                    {TABS.map((tab) => {
+                      const count = filterByCategory(results, tab.key).length;
+                      return (
+                        <button
+                          key={tab.key}
+                          onClick={() => setActiveTab(tab.key)}
+                          className={`flex-shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition-all ${
+                            activeTab === tab.key
+                              ? "bg-forest text-white shadow-sm"
+                              : "bg-warm-100 text-warm-600 hover:bg-warm-200"
+                          }`}
+                        >
+                          {tab.label}
+                          <span className={`ml-1.5 text-xs ${
+                            activeTab === tab.key ? "text-white/70" : "text-warm-400"
+                          }`}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
+
+                  {filteredResults && filteredResults.length === 0 ? (
+                    <CategoryEmptyState tab={activeTab} onReset={() => setActiveTab("alle")} />
+                  ) : (
+                    <>
+                      <h2 className="mb-4 font-display text-xl font-bold text-warm-900">
+                        {filteredResults!.length} passende{filteredResults!.length === 1 ? "s" : ""} Spiel{filteredResults!.length === 1 ? "" : "e"}
+                      </h2>
+                      <div className="space-y-3">
+                        {filteredResults!.map((game, i) => (
+                          <div key={game.id} className="animate-fade-up" style={{ animationDelay: `${i * 60}ms` }}>
+                            <ScoredGameCard game={game} rank={i + 1} />
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function CategorizedView({ categorized }: { categorized: CategorizedRecommendations }) {
+  const sections: { key: string; title: string; icon: string; games: ScoredGame[] }[] = [
+    { key: "lange", title: "Lange nicht gespielt", icon: "\u{1F4A4}", games: categorized.langeNichtGespielt },
+    { key: "favoriten", title: "Eure Favoriten", icon: "\u2B50", games: categorized.favoriten },
+    { key: "anders", title: "Mal was anderes?", icon: "\u{1F500}", games: categorized.malWasAnderes },
+  ];
+
+  const nonEmpty = sections.filter((s) => s.games.length > 0);
+
+  if (nonEmpty.length === 0) {
+    return <EmptyState />;
+  }
+
+  return (
+    <div className="space-y-8">
+      {nonEmpty.map((section) => (
+        <div key={section.key}>
+          <h2 className="mb-3 flex items-center gap-2 font-display text-lg font-bold text-warm-900">
+            <span>{section.icon}</span>
+            {section.title}
+            <span className="text-sm font-normal text-warm-400">({section.games.length})</span>
+          </h2>
+          <div className="space-y-3">
+            {section.games.map((game, i) => (
+              <div key={game.id} className="animate-fade-up" style={{ animationDelay: `${i * 60}ms` }}>
+                <ScoredGameCard game={game} rank={i + 1} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

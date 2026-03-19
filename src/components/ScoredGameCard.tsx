@@ -87,6 +87,7 @@ export default function ScoredGameCard({ game, rank }: ScoredGameCardProps) {
           {scoreBreakdown.favoriteBonus > 0 && <ScorePill label="Favorit" value={scoreBreakdown.favoriteBonus} max={5} />}
           {scoreBreakdown.lastPlayedBonus > 0 && <ScorePill label="Nicht gespielt" value={scoreBreakdown.lastPlayedBonus} max={12} />}
           {scoreBreakdown.tagBonus > 0 && <ScorePill label="Tag" value={scoreBreakdown.tagBonus} max={5} />}
+          {scoreBreakdown.moodBonus > 0 && <ScorePill label="Stimmung" value={scoreBreakdown.moodBonus} max={15} />}
 
           {/* Warum tooltip */}
           {reasons.length > 0 && <WhyTooltip reasons={reasons} />}
@@ -119,6 +120,7 @@ function getReasons(game: ScoredGame): string[] {
   if (b.lastPlayedBonus >= 9) reasons.push("Lange nicht gespielt");
   if (b.favoriteBonus > 0) reasons.push("Euer Favorit");
   if (b.tagBonus > 0) reasons.push("Passende Tags");
+  if (b.moodBonus > 0) reasons.push("Passt zur Stimmung");
   return reasons;
 }
 
