@@ -6,7 +6,8 @@ import Link from "next/link";
 import type { Game } from "@/types/game";
 import { PREDEFINED_TAGS, COMMON_MECHANICS } from "@/types/game";
 import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPlayers, getActiveLoanByGame, createLoan, returnLoan } from "@/lib/db-client";
-import { generateQuickRules, isAiConfigured } from "@/services/ai-client";
+import { generateQuickRules, isAiConfigured, generateSaleText } from "@/services/ai-client";
+import type { SaleCondition, SaleExtra, SaleTextResult } from "@/services/ai-client";
 import { saveQuickRules, getQuickRules } from "@/lib/db-client";
 import { COMMON_MECHANICS as AI_MECHANICS } from "@/types/game";
 import RegelGuru from "@/components/RegelGuru";
@@ -33,6 +34,13 @@ function GameDetailContent() {
   const [loanName, setLoanName] = useState("");
   const [loanDate, setLoanDate] = useState(new Date().toISOString().split("T")[0]);
   const [achievementQueue, setAchievementQueue] = useState<AchievementKey[]>([]);
+  const [showSaleModal, setShowSaleModal] = useState(false);
+  const [saleCondition, setSaleCondition] = useState<SaleCondition>("Gut");
+  const [saleExtras, setSaleExtras] = useState<SaleExtra[]>([]);
+  const [saleResult, setSaleResult] = useState<SaleTextResult | null>(null);
+  const [saleLoading, setSaleLoading] = useState(false);
+  const [saleError, setSaleError] = useState<string | null>(null);
+  const [saleToast, setSaleToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
@@ -161,6 +169,70 @@ function GameDetailContent() {
     }
   }
 
+  async function toggleForSale() {
+    if (!game) return;
+    setSaving(true);
+    const updated = await updateGame(game.id, { forSale: !game.forSale });
+    if (updated) setGame(updated);
+    setSaving(false);
+  }
+
+  async function handleGenerateSaleText() {
+    if (!game) return;
+    setSaleLoading(true);
+    setSaleError(null);
+    setSaleResult(null);
+    try {
+      const playerCount = game.minPlayers === game.maxPlayers
+        ? `${game.minPlayers}`
+        : `${game.minPlayers}–${game.maxPlayers}`;
+      const result = await generateSaleText(game.name, saleCondition, saleExtras, playerCount, game.playingTime);
+      setSaleResult(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      if (msg === "AI_NOT_CONFIGURED") {
+        setSaleError("AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
+      } else if (msg === "AI_RATE_LIMIT") {
+        setSaleError("Zu viele Anfragen. Bitte versuche es in einer Minute erneut.");
+      } else {
+        setSaleError("Verkaufstext konnte nicht generiert werden. Bitte versuche es erneut.");
+      }
+    } finally {
+      setSaleLoading(false);
+    }
+  }
+
+  async function copySaleText() {
+    if (!saleResult) return;
+    const fullText = `${saleResult.text}\n\nPreisvorschlag: ca. ${saleResult.suggestedPrice} €`;
+    try {
+      await navigator.clipboard.writeText(fullText);
+      setSaleToast("Kopiert! Jetzt bei Kleinanzeigen einfügen 📋");
+      setTimeout(() => setSaleToast(null), 3000);
+    } catch {
+      setSaleToast("Kopieren fehlgeschlagen");
+      setTimeout(() => setSaleToast(null), 3000);
+    }
+  }
+
+  async function shareSaleText() {
+    if (!saleResult || !game) return;
+    const fullText = `${saleResult.text}\n\nPreisvorschlag: ca. ${saleResult.suggestedPrice} €`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${game.name} zu verkaufen`, text: fullText });
+      } catch {
+        // User cancelled share
+      }
+    }
+  }
+
+  function toggleSaleExtra(extra: SaleExtra) {
+    setSaleExtras((prev) =>
+      prev.includes(extra) ? prev.filter((e) => e !== extra) : [...prev, extra]
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -286,6 +358,18 @@ function GameDetailContent() {
             >
               {sessions.length} {sessions.length === 1 ? "Partie" : "Partien"}
             </Link>
+            {aiAvailable && (
+              <button
+                onClick={() => setShowSaleModal(true)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition-all hover:shadow-md active:scale-[0.98] ${
+                  game.forSale
+                    ? "bg-amber-light text-amber-dark"
+                    : "bg-warm-100 text-warm-600 hover:bg-warm-200 shadow-none"
+                }`}
+              >
+                💰 Verkaufen
+              </button>
+            )}
             {game.lastPlayed && (
               <span className="inline-flex items-center rounded-xl bg-warm-50 px-3.5 py-2 text-sm text-warm-500 ring-1 ring-warm-200/60">
                 Zuletzt: {new Date(game.lastPlayed).toLocaleDateString("de-DE")}
@@ -600,6 +684,148 @@ function GameDetailContent() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Sale Modal */}
+      {showSaleModal && game && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setShowSaleModal(false)}>
+          <div className="mx-0 w-full max-w-lg max-h-[85vh] flex flex-col rounded-t-2xl bg-surface shadow-2xl sm:mx-4 sm:mb-auto sm:mt-auto sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-warm-100 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">💰</span>
+                <div>
+                  <h2 className="font-display text-xl font-bold text-warm-900">Verkaufshelfer</h2>
+                  <p className="text-sm text-warm-500">{game.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSaleModal(false)}
+                className="rounded-full p-2 text-warm-400 transition-colors hover:bg-warm-100 hover:text-warm-600"
+                aria-label="Schließen"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+              {/* For Sale Toggle */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-warm-700">Als &quot;Zu verkaufen&quot; markieren</span>
+                <button
+                  onClick={toggleForSale}
+                  disabled={saving}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                    game.forSale ? "bg-forest" : "bg-warm-300"
+                  }`}
+                  role="switch"
+                  aria-checked={game.forSale}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    game.forSale ? "translate-x-6" : "translate-x-1"
+                  }`} />
+                </button>
+              </div>
+
+              {/* Condition */}
+              <div>
+                <label className="text-xs font-semibold text-warm-500 uppercase tracking-wider">Zustand</label>
+                <select
+                  value={saleCondition}
+                  onChange={(e) => setSaleCondition(e.target.value as SaleCondition)}
+                  className="mt-1.5 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+                >
+                  <option value="Wie neu">Wie neu</option>
+                  <option value="Gut">Gut</option>
+                  <option value="Gebrauchsspuren">Gebrauchsspuren</option>
+                  <option value="Stark bespielt">Stark bespielt</option>
+                </select>
+              </div>
+
+              {/* Extras */}
+              <div>
+                <label className="text-xs font-semibold text-warm-500 uppercase tracking-wider">Extras</label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(["OVP", "Sleeves", "Erweiterungen dabei", "Vollständig"] as SaleExtra[]).map((extra) => (
+                    <button
+                      key={extra}
+                      onClick={() => toggleSaleExtra(extra)}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-medium transition-all ${
+                        saleExtras.includes(extra)
+                          ? "bg-forest text-white shadow-sm"
+                          : "bg-warm-50 text-warm-600 ring-1 ring-warm-200/60 hover:bg-warm-100"
+                      }`}
+                    >
+                      {extra}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generate Button */}
+              <button
+                onClick={handleGenerateSaleText}
+                disabled={saleLoading}
+                className="w-full rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98] disabled:opacity-50"
+              >
+                {saleLoading ? "Wird generiert..." : "✨ Verkaufstext generieren"}
+              </button>
+
+              {/* Error */}
+              {saleError && (
+                <div className="rounded-xl bg-coral-light p-4 text-sm text-coral">
+                  {saleError}
+                </div>
+              )}
+
+              {/* Result */}
+              {saleResult && (
+                <div className="space-y-3">
+                  <div className="rounded-xl bg-warm-50 p-4 ring-1 ring-warm-200/60">
+                    <p className="text-sm leading-relaxed text-warm-800 whitespace-pre-line">{saleResult.text}</p>
+                  </div>
+                  <div className="rounded-xl bg-forest-light p-4 text-center">
+                    <p className="text-xs font-semibold text-forest uppercase tracking-wider">Preisvorschlag</p>
+                    <p className="mt-1 font-display text-2xl font-bold text-forest">ca. {saleResult.suggestedPrice} €</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={copySaleText}
+                      className="flex-1 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
+                    >
+                      📋 Text kopieren
+                    </button>
+                    {"share" in navigator && (
+                      <button
+                        onClick={shareSaleText}
+                        className="flex-1 rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+                      >
+                        Teilen
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 pb-5 pt-3 border-t border-warm-100 flex-shrink-0">
+              <button
+                onClick={() => setShowSaleModal(false)}
+                className="w-full rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+              >
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sale Toast */}
+      {saleToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] rounded-xl bg-invert px-5 py-2.5 text-sm font-medium text-invert-text shadow-xl transition-all">
+          {saleToast}
         </div>
       )}
 

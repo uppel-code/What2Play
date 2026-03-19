@@ -34,6 +34,7 @@ function makeGame(overrides: Partial<Game> = {}): Game {
     shelfLocation: null,
     lastPlayed: null,
     favorite: false,
+    forSale: false,
     notes: null,
     tags: [],
     createdAt: "2025-01-01",
@@ -72,6 +73,20 @@ describe("GameCard badges", () => {
     render(<GameCard game={game} />);
     expect(screen.queryByTitle("Regeln auffrischen?")).not.toBeInTheDocument();
     expect(screen.queryByTitle("Regeln vorhanden")).not.toBeInTheDocument();
+  });
+});
+
+describe("GameCard forSale badge", () => {
+  it("shows 'Zu verkaufen' badge when forSale=true", () => {
+    const game = makeGame({ forSale: true });
+    render(<GameCard game={game} />);
+    expect(screen.getByText(/Zu verkaufen/)).toBeInTheDocument();
+  });
+
+  it("does NOT show 'Zu verkaufen' badge when forSale=false", () => {
+    const game = makeGame({ forSale: false });
+    render(<GameCard game={game} />);
+    expect(screen.queryByText(/Zu verkaufen/)).not.toBeInTheDocument();
   });
 });
 

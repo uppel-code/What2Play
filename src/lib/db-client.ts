@@ -23,6 +23,7 @@ interface GameRecord {
   shelfLocation: string | null;
   lastPlayed: string | null;
   favorite: boolean;
+  forSale: boolean;
   notes: string | null;
   tags: string[];
   bggRating: number | null;
@@ -161,6 +162,20 @@ db.version(8).stores({
   achievements: "++id, &key, unlockedAt",
 });
 
+db.version(9).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight, *mechanics",
+  players: "++id, name",
+  playGroups: "++id, name",
+  playSessions: "++id, gameId, playedAt",
+  chatMessages: "++id, gameId, createdAt",
+  loans: "++id, gameId, personName, returnedAt",
+  achievements: "++id, &key, unlockedAt",
+}).upgrade((tx) => {
+  return tx.table("games").toCollection().modify((game) => {
+    if (game.forSale === undefined) game.forSale = false;
+  });
+});
+
 // ─── CRUD Operations ───
 
 export async function getAllGames(): Promise<Game[]> {
@@ -199,6 +214,7 @@ export async function createGame(data: CreateGameInput): Promise<Game> {
     shelfLocation: data.shelfLocation ?? null,
     lastPlayed: null,
     favorite: data.favorite ?? false,
+    forSale: data.forSale ?? false,
     notes: data.notes ?? null,
     tags: data.tags ?? [],
     createdAt: now,

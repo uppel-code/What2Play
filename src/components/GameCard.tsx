@@ -259,6 +259,11 @@ export default function GameCard({ game, onDelete, activeLoan }: GameCardProps) 
                 📦 Verliehen an {activeLoan.personName}
               </div>
             )}
+            {game.forSale && (
+              <div className="mt-2 rounded-lg bg-forest-light px-2 py-1 text-[11px] font-medium text-forest">
+                💰 Zu verkaufen
+              </div>
+            )}
           </div>
         </Link>
       </div>

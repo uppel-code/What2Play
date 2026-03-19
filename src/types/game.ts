@@ -26,6 +26,7 @@ export interface OwnershipData {
   shelfLocation: string | null;
   lastPlayed: string | null; // ISO date string
   favorite: boolean;
+  forSale: boolean;
 }
 
 // ─── User Tags & Notes ───
@@ -97,6 +98,7 @@ export interface Game {
   shelfLocation: string | null;
   lastPlayed: string | null;
   favorite: boolean;
+  forSale: boolean;
   // User meta
   notes: string | null;
   tags: string[];
@@ -119,6 +121,7 @@ export interface GameFilters {
   mechanics?: string[];
   neverPlayed?: boolean;
   longNotPlayed?: boolean;       // >30 days since last play
+  forSale?: boolean;
   sortBy?: "name" | "lastPlayed";
   sortDirection?: "asc" | "desc"; // for lastPlayed sorting
 }
@@ -209,6 +212,7 @@ export interface CreateGameInput {
   owned?: boolean;
   shelfLocation?: string | null;
   favorite?: boolean;
+  forSale?: boolean;
   notes?: string | null;
   tags?: string[];
 }

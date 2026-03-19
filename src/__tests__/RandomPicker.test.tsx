@@ -33,6 +33,7 @@ function makeGame(overrides: Partial<Game> = {}): Game {
     shelfLocation: null,
     lastPlayed: null,
     favorite: false,
+    forSale: false,
     notes: null,
     tags: [],
     createdAt: "2024-01-01T00:00:00Z",

@@ -25,6 +25,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
     filters.tags?.length,
     filters.mechanics?.length,
     filters.sortBy,
+    filters.forSale,
   ].filter(Boolean).length;
 
   return (
@@ -139,6 +140,20 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
             <option value="lastPlayed-desc">Zuletzt gespielt ↓</option>
             <option value="lastPlayed-asc">Zuletzt gespielt ↑</option>
           </FilterSelect>
+
+          {/* For Sale filter */}
+          <div className="col-span-2 sm:col-span-4">
+            <button
+              onClick={() => onChange({ ...filters, forSale: filters.forSale ? undefined : true })}
+              className={`rounded-xl px-3.5 py-2 text-sm font-medium transition-all ${
+                filters.forSale
+                  ? "bg-forest text-white shadow-sm"
+                  : "bg-warm-50 text-warm-600 ring-1 ring-warm-200/60 hover:bg-warm-100"
+              }`}
+            >
+              💰 Zum Verkauf
+            </button>
+          </div>
 
           {/* Tag filter */}
           <div className="col-span-2 sm:col-span-4">

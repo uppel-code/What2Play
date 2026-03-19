@@ -424,6 +424,76 @@ function parseVerificationResponse(text: string): VerificationResult {
   }
 }
 
+// ─── Sale Text Generation ───
+
+export type SaleCondition = "Wie neu" | "Gut" | "Gebrauchsspuren" | "Stark bespielt";
+export type SaleExtra = "OVP" | "Sleeves" | "Erweiterungen dabei" | "Vollständig";
+
+export interface SaleTextResult {
+  text: string;
+  suggestedPrice: string;
+}
+
+export async function generateSaleText(
+  gameName: string,
+  condition: SaleCondition,
+  extras: SaleExtra[],
+  playerCount: string,
+  playingTime: number
+): Promise<SaleTextResult> {
+  const config = await getAiConfig();
+  if (!config) throw new Error("AI_NOT_CONFIGURED");
+
+  const extrasStr = extras.length > 0 ? extras.join(", ") : "keine";
+
+  const prompt = `Erstelle einen Verkaufstext für das Brettspiel "${gameName}" auf Kleinanzeigen. Zustand: ${condition}. Extras: ${extrasStr}. Schreibe freundlich, kurz (max 100 Wörter), erwähne Spieleranzahl (${playerCount}) und Spieldauer (${playingTime} Min). Füge relevante Hashtags hinzu.
+
+Recherchiere aktuelle Preise für "${gameName}" auf dem Gebrauchtmarkt (BGG Marketplace, Kleinanzeigen, etc.) und gib einen realistischen Preisvorschlag basierend auf dem Zustand "${condition}".
+
+Antworte NUR mit validem JSON (kein Markdown):
+{"text": "Der Verkaufstext hier...", "suggestedPrice": "XX"}
+
+suggestedPrice soll NUR eine Zahl sein (z.B. "25"), kein €-Zeichen.`;
+
+  let responseText: string;
+
+  switch (config.provider) {
+    case "gemini":
+      responseText = await callGeminiText(config.apiKey, prompt);
+      break;
+    case "openai":
+      responseText = await callOpenAIText(config.apiKey, prompt);
+      break;
+    case "claude":
+      responseText = await callClaudeText(config.apiKey, prompt);
+      break;
+    default:
+      throw new Error("UNKNOWN_PROVIDER");
+  }
+
+  return parseSaleTextResponse(responseText);
+}
+
+function parseSaleTextResponse(text: string): SaleTextResult {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  }
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      text: parsed.text || "Verkaufstext konnte nicht generiert werden.",
+      suggestedPrice: parsed.suggestedPrice || "?",
+    };
+  } catch {
+    return {
+      text: cleaned,
+      suggestedPrice: "?",
+    };
+  }
+}
+
 // ─── Quick Rules ───
 
 export async function generateQuickRules(gameName: string, mechanics: string[]): Promise<string> {

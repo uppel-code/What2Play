@@ -133,6 +133,9 @@ export default function CollectionPage() {
         const daysSince = (Date.now() - new Date(game.lastPlayed).getTime()) / (1000 * 60 * 60 * 24);
         if (daysSince <= 30) return false;
       }
+      if (filters.forSale) {
+        if (!game.forSale) return false;
+      }
       return true;
     });
 
