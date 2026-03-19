@@ -430,17 +430,25 @@ export async function generateQuickRules(gameName: string, mechanics: string[]):
 
   const mechanicsHint = mechanics.length > 0 ? `\nDas Spiel nutzt folgende Mechaniken: ${mechanics.join(", ")}.` : "";
 
-  const prompt = `Du bist ein erfahrener Brettspiel-Erklärer. Erkläre "${gameName}" so, dass jemand sofort losspielen kann.${mechanicsHint}
+  const prompt = `Du bist ein Brettspiel-Experte. Erkläre die KONKRETEN Regeln von "${gameName}" für jemanden der das Spiel schon mal gespielt hat aber sich nicht mehr erinnert.${mechanicsHint}
 
-Struktur (nutze diese Überschriften):
+WICHTIG: Sei SPEZIFISCH für dieses Spiel! Keine generischen Aussagen wie "sammle Punkte".
 
-**Ziel:** Was muss ich erreichen um zu gewinnen? (1 Satz)
+**Ziel:** WIE gewinnt man konkret? (z.B. "Baue dein Weltwunder fertig ODER habe nach 3 Zeitaltern die meisten Punkte aus Gebäuden, Militär, Wissenschaft und Wunder")
 
-**Mein Zug:** Was mache ich konkret wenn ich dran bin? Liste die Aktionen/Phasen auf. (2-4 Bullet Points)
+**Spielablauf:**
+• Wie läuft eine Runde ab? (z.B. "Alle wählen gleichzeitig 1 Karte, geben Rest weiter")
+• Was kann ich mit meiner Karte machen?
+• Wann endet das Spiel?
 
-**Wichtig:** Die 2-3 wichtigsten Regeln die man oft vergisst oder falsch macht.
+**Aktionen im Detail:**
+• Welche konkreten Optionen habe ich in meinem Zug?
+• Was kosten Aktionen? (Ressourcen, Geld, etc.)
 
-Schreibe auf Deutsch, kurz und konkret. Keine Floskeln. Bullet Points mit •`;
+**Oft vergessen:**
+• 2-3 Regeln die häufig falsch gespielt werden
+
+Antworte mit 150-250 Wörtern. Deutsch. Nutze • für Listen.`;
 
   let responseText: string;
 
