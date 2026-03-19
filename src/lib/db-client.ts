@@ -92,6 +92,17 @@ db.version(4).stores({
   playSessions: "++id, gameId, playedAt",
 });
 
+db.version(5).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight, *mechanics",
+  players: "++id, name",
+  playGroups: "++id, name",
+  playSessions: "++id, gameId, playedAt",
+}).upgrade((tx) => {
+  return tx.table("games").toCollection().modify((game) => {
+    if (game.mechanics === undefined) game.mechanics = [];
+  });
+});
+
 // ─── CRUD Operations ───
 
 export async function getAllGames(): Promise<Game[]> {

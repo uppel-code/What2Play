@@ -68,6 +68,14 @@ const QUICK_FILTERS: QuickFilter[] = [
     isActive: (f) => f.longNotPlayed === true,
     remove: (f) => ({ ...f, longNotPlayed: undefined }),
   },
+  {
+    id: "coop",
+    label: "Coop",
+    icon: "🤝",
+    apply: (f) => ({ ...f, mechanics: ["Cooperative Game"] }),
+    isActive: (f) => f.mechanics?.includes("Cooperative Game") === true,
+    remove: (f) => ({ ...f, mechanics: undefined }),
+  },
 ];
 
 interface QuickFiltersProps {

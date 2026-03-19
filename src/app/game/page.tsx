@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Game } from "@/types/game";
-import { PREDEFINED_TAGS } from "@/types/game";
+import { PREDEFINED_TAGS, COMMON_MECHANICS } from "@/types/game";
 import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPlayers } from "@/lib/db-client";
 import type { Player, PlaySession } from "@/types/game";
 
@@ -272,11 +272,14 @@ function GameDetailContent() {
             <div className="mt-5">
               <h3 className="text-xs font-semibold text-warm-500 uppercase tracking-wider">Mechaniken</h3>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {game.mechanics.map((mech) => (
-                  <span key={mech} className="rounded-lg bg-warm-50 px-2.5 py-1 text-xs font-medium text-warm-600 ring-1 ring-warm-200/60">
-                    {mech}
-                  </span>
-                ))}
+                {game.mechanics.map((mech) => {
+                  const known = COMMON_MECHANICS.find((m) => m.value === mech);
+                  return (
+                    <span key={mech} className="rounded-lg bg-forest-light px-2.5 py-1 text-xs font-medium text-forest ring-1 ring-forest/20">
+                      {known ? known.label : mech}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}

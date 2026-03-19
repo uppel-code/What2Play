@@ -47,6 +47,25 @@ export const PREDEFINED_TAGS: { value: PredefinedTag; label: string }[] = [
   { value: "expert-game", label: "Kennerspiel" },
 ];
 
+// ─── Game Mechanics ───
+
+export const COMMON_MECHANICS: { value: string; label: string }[] = [
+  { value: "Worker Placement", label: "Worker Placement" },
+  { value: "Deck, Bag, and Pool Building", label: "Deckbau" },
+  { value: "Area Majority / Influence", label: "Gebietskontrolle" },
+  { value: "Dice Rolling", label: "Würfeln" },
+  { value: "Hand Management", label: "Handmanagement" },
+  { value: "Set Collection", label: "Set Collection" },
+  { value: "Tile Placement", label: "Plättchen legen" },
+  { value: "Drafting", label: "Drafting" },
+  { value: "Cooperative Game", label: "Kooperativ" },
+  { value: "Engine Building", label: "Engine Building" },
+  { value: "Route/Network Building", label: "Streckenbau" },
+  { value: "Trading", label: "Handeln" },
+  { value: "Auction/Bidding", label: "Auktion/Bieten" },
+  { value: "Variable Player Powers", label: "Spielerfähigkeiten" },
+];
+
 export interface UserGameMeta {
   notes: string | null;
   tags: string[]; // PredefinedTag or custom strings
@@ -96,6 +115,7 @@ export interface GameFilters {
   maxComplexity?: number;
   minAge?: number;
   tags?: string[];
+  mechanics?: string[];
   neverPlayed?: boolean;
   longNotPlayed?: boolean;       // >30 days since last play
   sortBy?: "name" | "lastPlayed";

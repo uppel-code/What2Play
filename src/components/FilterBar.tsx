@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { GameFilters } from "@/types/game";
-import { PREDEFINED_TAGS } from "@/types/game";
+import { PREDEFINED_TAGS, COMMON_MECHANICS } from "@/types/game";
 
 interface FilterBarProps {
   filters: GameFilters;
@@ -23,6 +23,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
     filters.minComplexity || filters.maxComplexity,
     filters.minAge,
     filters.tags?.length,
+    filters.mechanics?.length,
     filters.sortBy,
   ].filter(Boolean).length;
 
@@ -162,6 +163,35 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
                     }`}
                   >
                     {tag.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Mechanik filter */}
+          <div className="col-span-2 sm:col-span-4">
+            <label className="mb-1.5 block text-xs font-medium text-warm-500">Mechanik</label>
+            <div className="flex flex-wrap gap-1.5">
+              {COMMON_MECHANICS.map((mech) => {
+                const isSelected = filters.mechanics?.includes(mech.value);
+                return (
+                  <button
+                    key={mech.value}
+                    onClick={() => {
+                      const current = filters.mechanics || [];
+                      const next = isSelected
+                        ? current.filter((m) => m !== mech.value)
+                        : [...current, mech.value];
+                      onChange({ ...filters, mechanics: next.length > 0 ? next : undefined });
+                    }}
+                    className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                      isSelected
+                        ? "bg-forest text-white"
+                        : "bg-warm-50 text-warm-600 hover:bg-warm-100"
+                    }`}
+                  >
+                    {mech.label}
                   </button>
                 );
               })}
