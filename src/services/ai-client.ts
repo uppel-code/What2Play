@@ -430,14 +430,17 @@ export async function generateQuickRules(gameName: string, mechanics: string[]):
 
   const mechanicsHint = mechanics.length > 0 ? `\nDas Spiel nutzt folgende Mechaniken: ${mechanics.join(", ")}.` : "";
 
-  const prompt = `Du bist ein erfahrener Brettspiel-Erklärer. Fasse die wichtigsten Regeln von "${gameName}" in 5–7 kurzen Sätzen zusammen.${mechanicsHint}
+  const prompt = `Du bist ein erfahrener Brettspiel-Erklärer. Erkläre "${gameName}" so, dass jemand sofort losspielen kann.${mechanicsHint}
 
-Erkläre:
-- Das Spielziel
-- Den grundlegenden Spielablauf (was macht man in seinem Zug?)
-- Die wichtigste(n) Gewinnbedingung(en)
+Struktur (nutze diese Überschriften):
 
-Schreibe auf Deutsch, klar und verständlich. Keine Überschriften, nur Fließtext. Beginne direkt mit dem Spielziel.`;
+**Ziel:** Was muss ich erreichen um zu gewinnen? (1 Satz)
+
+**Mein Zug:** Was mache ich konkret wenn ich dran bin? Liste die Aktionen/Phasen auf. (2-4 Bullet Points)
+
+**Wichtig:** Die 2-3 wichtigsten Regeln die man oft vergisst oder falsch macht.
+
+Schreibe auf Deutsch, kurz und konkret. Keine Floskeln. Bullet Points mit •`;
 
   let responseText: string;
 
