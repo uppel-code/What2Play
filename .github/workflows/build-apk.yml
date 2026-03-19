@@ -41,10 +41,15 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Create signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           # Use a consistent keystore for all builds so updates work
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/what2play.keystore || {
-            # Fallback: generate new keystore if secret not set
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/what2play.keystore
+            echo "Using stored keystore from secrets"
+          else
+            # Generate new keystore if secret not set
             keytool -genkeypair \
               -alias what2play \
               -keyalg RSA \
@@ -54,7 +59,8 @@ jobs:
               -storepass what2play2026 \
               -keypass what2play2026 \
               -dname "CN=What2Play, OU=Dev, O=Uppel, L=Wallenhorst, ST=NDS, C=DE"
-          }
+            echo "Generated new keystore"
+          fi
 
       - name: Build release APK
         working-directory: android
