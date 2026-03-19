@@ -292,11 +292,22 @@ export default function SettingsPage() {
 
         <div className="rounded-xl bg-warm-50 p-4 mb-4">
           <p className="text-sm text-warm-600 leading-relaxed">
-            Für den Foto-Scan brauchst du einen AI-API-Key. <strong>Google Gemini</strong> ist empfohlen
-            — der API-Key ist kostenlos (keine Kreditkarte nötig).
+            {aiProvider === "gemini" && (
+              <>Für den Foto-Scan brauchst du einen AI-API-Key. <strong>Google Gemini</strong> ist empfohlen — der API-Key ist kostenlos (keine Kreditkarte nötig).</>
+            )}
+            {aiProvider === "openai" && (
+              <>Für OpenAI brauchst du einen API-Key von der OpenAI Platform. <strong>Achtung:</strong> OpenAI ist kostenpflichtig (ca. $0.01 pro Foto-Scan).</>
+            )}
+            {aiProvider === "claude" && (
+              <>Für Claude brauchst du einen API-Key von Anthropic. <strong>Achtung:</strong> Claude ist kostenpflichtig (ca. $0.01 pro Foto-Scan).</>
+            )}
           </p>
           <a
-            href="https://aistudio.google.com/apikey"
+            href={
+              aiProvider === "gemini" ? "https://aistudio.google.com/apikey" :
+              aiProvider === "openai" ? "https://platform.openai.com/api-keys" :
+              "https://console.anthropic.com/settings/keys"
+            }
             target="_blank"
             rel="noopener noreferrer"
             className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-forest hover:text-forest-dark transition-colors"
@@ -304,7 +315,9 @@ export default function SettingsPage() {
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
-            Kostenlosen Gemini API-Key erstellen →
+            {aiProvider === "gemini" && "Kostenlosen Gemini API-Key erstellen →"}
+            {aiProvider === "openai" && "OpenAI API-Key erstellen →"}
+            {aiProvider === "claude" && "Anthropic API-Key erstellen →"}
           </a>
         </div>
 
