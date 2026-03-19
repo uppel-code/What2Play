@@ -27,6 +27,7 @@ interface GameRecord {
   tags: string[];
   bggRating: number | null;
   bggRank: number | null;
+  quickRules: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -103,6 +104,17 @@ db.version(5).stores({
   });
 });
 
+db.version(6).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight, *mechanics",
+  players: "++id, name",
+  playGroups: "++id, name",
+  playSessions: "++id, gameId, playedAt",
+}).upgrade((tx) => {
+  return tx.table("games").toCollection().modify((game) => {
+    if (game.quickRules === undefined) game.quickRules = null;
+  });
+});
+
 // ─── CRUD Operations ───
 
 export async function getAllGames(): Promise<Game[]> {
@@ -136,6 +148,7 @@ export async function createGame(data: CreateGameInput): Promise<Game> {
     mechanics: data.mechanics ?? [],
     bggRating: data.bggRating ?? null,
     bggRank: data.bggRank ?? null,
+    quickRules: null,
     owned: data.owned !== false,
     shelfLocation: data.shelfLocation ?? null,
     lastPlayed: null,
@@ -169,6 +182,15 @@ export async function deleteGame(id: number): Promise<boolean> {
 
 export async function getGameCount(): Promise<number> {
   return db.games.filter((g) => g.owned === true).count();
+}
+
+export async function saveQuickRules(gameId: number, quickRules: string): Promise<void> {
+  await db.games.update(gameId, { quickRules, updatedAt: new Date().toISOString() });
+}
+
+export async function getQuickRules(gameId: number): Promise<string | null> {
+  const game = await db.games.get(gameId);
+  return game?.quickRules ?? null;
 }
 
 // ─── Player Operations ───

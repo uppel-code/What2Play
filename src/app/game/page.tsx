@@ -7,6 +7,7 @@ import type { Game } from "@/types/game";
 import { PREDEFINED_TAGS, COMMON_MECHANICS } from "@/types/game";
 import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPlayers } from "@/lib/db-client";
 import { generateQuickRules, isAiConfigured } from "@/services/ai-client";
+import { saveQuickRules, getQuickRules } from "@/lib/db-client";
 import { COMMON_MECHANICS as AI_MECHANICS } from "@/types/game";
 import type { Player, PlaySession } from "@/types/game";
 
@@ -90,7 +91,15 @@ function GameDetailContent() {
     if (!game) return;
     setShowQuickRules(true);
     setQuickRulesError(null);
-    if (quickRulesText) return; // already loaded
+    if (quickRulesText) return; // already loaded in state
+    
+    // Check if we have cached rules in DB
+    const cached = await getQuickRules(game.id);
+    if (cached) {
+      setQuickRulesText(cached);
+      return;
+    }
+    
     setQuickRulesLoading(true);
     try {
       const mechanicLabels = game.mechanics.map((m) => {
@@ -99,6 +108,8 @@ function GameDetailContent() {
       });
       const text = await generateQuickRules(game.name, mechanicLabels);
       setQuickRulesText(text);
+      // Save to DB for next time
+      await saveQuickRules(game.id, text);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
       if (msg === "AI_NOT_CONFIGURED") {
@@ -391,21 +402,49 @@ function GameDetailContent() {
               )}
             </div>
 
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setShowQuickRules(false)}
-                className="flex-1 rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
-              >
-                Schließen
-              </button>
-              <a
-                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(game.name + " Regeln erklärt")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
-              >
-                ▶ Video anschauen
-              </a>
+            <div className="mt-6 flex flex-col gap-2">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowQuickRules(false)}
+                  className="flex-1 rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+                >
+                  Schließen
+                </button>
+                <a
+                  href={`https://www.youtube.com/results?search_query=${encodeURIComponent(game.name + " Regeln erklärt")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
+                >
+                  ▶ Video anschauen
+                </a>
+              </div>
+              {quickRulesText && !quickRulesLoading && (
+                <button
+                  onClick={async () => {
+                    if (!game) return;
+                    setQuickRulesText(null);
+                    setQuickRulesLoading(true);
+                    setQuickRulesError(null);
+                    try {
+                      const mechanicLabels = game.mechanics.map((m) => {
+                        const known = AI_MECHANICS.find((k) => k.value === m);
+                        return known ? known.label : m;
+                      });
+                      const text = await generateQuickRules(game.name, mechanicLabels);
+                      setQuickRulesText(text);
+                      await saveQuickRules(game.id, text);
+                    } catch {
+                      setQuickRulesError("Regeln konnten nicht neu geladen werden.");
+                    } finally {
+                      setQuickRulesLoading(false);
+                    }
+                  }}
+                  className="w-full rounded-xl border border-warm-200 px-4 py-2 text-sm text-warm-500 transition-colors hover:bg-warm-50"
+                >
+                  🔄 Neu generieren
+                </button>
+              )}
             </div>
           </div>
         </div>

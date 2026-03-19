@@ -91,6 +91,7 @@ export interface Game {
   mechanics: string[];
   bggRating: number | null;
   bggRank: number | null;
+  quickRules: string | null;
   // Ownership
   owned: boolean;
   shelfLocation: string | null;
