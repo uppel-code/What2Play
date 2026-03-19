@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const DETAIL_ROUTES = ["/game"];
+const DETAIL_ROUTES = ["/game", "/player", "/leaderboard"];
 
 const TAB_ITEMS = [
   { href: "/", label: "Home", icon: "home" },

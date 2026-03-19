@@ -20,6 +20,7 @@ import { computeGameStats } from "@/services/win-loss-stats";
 import type { GameStats } from "@/services/win-loss-stats";
 import PieChart, { getPieColors } from "@/components/PieChart";
 import BarChart from "@/components/BarChart";
+import { exportRulesAsText, exportRulesAsPdf, copyRulesToClipboard } from "@/services/rules-export";
 
 function GameDetailContent() {
   const searchParams = useSearchParams();
@@ -55,6 +56,7 @@ function GameDetailContent() {
   const [expansionSearchLoading, setExpansionSearchLoading] = useState(false);
   const [expansionManualName, setExpansionManualName] = useState("");
   const [gameStats, setGameStats] = useState<GameStats | null>(null);
+  const [rulesExportToast, setRulesExportToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
@@ -923,30 +925,68 @@ function GameDetailContent() {
                 </a>
               </div>
               {quickRulesText && !quickRulesLoading && (
-                <button
-                  onClick={async () => {
-                    if (!game) return;
-                    setQuickRulesText(null);
-                    setQuickRulesLoading(true);
-                    setQuickRulesError(null);
-                    try {
-                      const mechanicLabels = game.mechanics.map((m) => {
-                        const known = AI_MECHANICS.find((k) => k.value === m);
-                        return known ? known.label : m;
-                      });
-                      const text = await generateQuickRules(game.name, mechanicLabels);
-                      setQuickRulesText(text);
-                      await saveQuickRules(game.id, text);
-                    } catch {
-                      setQuickRulesError("Regeln konnten nicht neu geladen werden.");
-                    } finally {
-                      setQuickRulesLoading(false);
-                    }
-                  }}
-                  className="w-full rounded-xl border border-warm-200 px-4 py-2 text-sm text-warm-500 transition-colors hover:bg-warm-50"
-                >
-                  🔄 Neu generieren
-                </button>
+                <>
+                  <button
+                    onClick={async () => {
+                      if (!game) return;
+                      setQuickRulesText(null);
+                      setQuickRulesLoading(true);
+                      setQuickRulesError(null);
+                      try {
+                        const mechanicLabels = game.mechanics.map((m) => {
+                          const known = AI_MECHANICS.find((k) => k.value === m);
+                          return known ? known.label : m;
+                        });
+                        const text = await generateQuickRules(game.name, mechanicLabels);
+                        setQuickRulesText(text);
+                        await saveQuickRules(game.id, text);
+                      } catch {
+                        setQuickRulesError("Regeln konnten nicht neu geladen werden.");
+                      } finally {
+                        setQuickRulesLoading(false);
+                      }
+                    }}
+                    className="w-full rounded-xl border border-warm-200 px-4 py-2 text-sm text-warm-500 transition-colors hover:bg-warm-50"
+                  >
+                    🔄 Neu generieren
+                  </button>
+
+                  {/* Regelwerk Export */}
+                  <div className="flex gap-2" data-testid="rules-export-buttons">
+                    <button
+                      onClick={() => {
+                        if (!game || !quickRulesText) return;
+                        exportRulesAsText({ game, quickRules: quickRulesText });
+                      }}
+                      className="flex-1 rounded-xl border border-warm-200 px-3 py-2 text-sm text-warm-600 transition-colors hover:bg-warm-50"
+                    >
+                      📄 Text Export
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!game || !quickRulesText) return;
+                        exportRulesAsPdf({ game, quickRules: quickRulesText });
+                      }}
+                      className="flex-1 rounded-xl border border-warm-200 px-3 py-2 text-sm text-warm-600 transition-colors hover:bg-warm-50"
+                    >
+                      🖨️ PDF Drucken
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!game || !quickRulesText) return;
+                        const ok = await copyRulesToClipboard({ game, quickRules: quickRulesText });
+                        setRulesExportToast(ok ? "Regeln kopiert!" : "Kopieren fehlgeschlagen");
+                        setTimeout(() => setRulesExportToast(null), 2000);
+                      }}
+                      className="flex-1 rounded-xl border border-warm-200 px-3 py-2 text-sm text-warm-600 transition-colors hover:bg-warm-50"
+                    >
+                      📋 Kopieren
+                    </button>
+                  </div>
+                  {rulesExportToast && (
+                    <p className="text-center text-xs text-forest font-medium animate-fade-up">{rulesExportToast}</p>
+                  )}
+                </>
               )}
             </div>
           </div>
