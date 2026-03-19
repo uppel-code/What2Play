@@ -356,6 +356,7 @@ async function callGeminiText(apiKey: string, prompt: string): Promise<string> {
 
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
     generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
   };
 
@@ -527,6 +528,7 @@ async function callGeminiChat(apiKey: string, systemPrompt: string, history: Rul
 
   const body = {
     contents,
+    tools: [{ google_search: {} }],
     generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
   };
 
