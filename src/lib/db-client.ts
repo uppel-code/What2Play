@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup } from "@/types/game";
+import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup, PlaySession } from "@/types/game";
 
 // ─── Database Definition ───
 
@@ -46,10 +46,22 @@ interface PlayGroupRecord {
   updatedAt: string;
 }
 
+interface PlaySessionRecord {
+  id: number;
+  gameId: number;
+  playedAt: string;
+  playerCount: number;
+  duration: number;
+  winnerId: number | null;
+  notes: string | null;
+  createdAt: string;
+}
+
 const db = new Dexie("What2PlayDB") as Dexie & {
   games: EntityTable<GameRecord, "id">;
   players: EntityTable<PlayerRecord, "id">;
   playGroups: EntityTable<PlayGroupRecord, "id">;
+  playSessions: EntityTable<PlaySessionRecord, "id">;
 };
 
 db.version(1).stores({
@@ -71,6 +83,13 @@ db.version(3).stores({
     if (game.bggRating === undefined) game.bggRating = null;
     if (game.bggRank === undefined) game.bggRank = null;
   });
+});
+
+db.version(4).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight",
+  players: "++id, name",
+  playGroups: "++id, name",
+  playSessions: "++id, gameId, playedAt",
 });
 
 // ─── CRUD Operations ───
@@ -229,5 +248,88 @@ export async function deletePlayGroup(id: number): Promise<boolean> {
   if (!existing) return false;
   await db.playGroups.delete(id);
   return true;
+}
+
+// ─── PlaySession Operations ───
+
+export async function createPlaySession(data: {
+  gameId: number;
+  playedAt: string;
+  playerCount: number;
+  duration: number;
+  winnerId?: number | null;
+  notes?: string | null;
+}): Promise<PlaySession> {
+  const now = new Date().toISOString();
+  const record: Omit<PlaySessionRecord, "id"> = {
+    gameId: data.gameId,
+    playedAt: data.playedAt,
+    playerCount: data.playerCount,
+    duration: data.duration,
+    winnerId: data.winnerId ?? null,
+    notes: data.notes ?? null,
+    createdAt: now,
+  };
+  const id = await db.playSessions.add(record as PlaySessionRecord);
+  // Also update lastPlayed on the game
+  await db.games.update(data.gameId, {
+    lastPlayed: data.playedAt,
+    updatedAt: now,
+  });
+  return (await db.playSessions.get(id))! as PlaySession;
+}
+
+export async function getSessionsByGame(gameId: number): Promise<PlaySession[]> {
+  return db.playSessions
+    .where("gameId")
+    .equals(gameId)
+    .reverse()
+    .sortBy("playedAt");
+}
+
+export async function getAllSessions(): Promise<PlaySession[]> {
+  return db.playSessions.reverse().sortBy("playedAt");
+}
+
+export async function deletePlaySession(id: number): Promise<boolean> {
+  const existing = await db.playSessions.get(id);
+  if (!existing) return false;
+  await db.playSessions.delete(id);
+  return true;
+}
+
+export async function getPlayStats(): Promise<{
+  totalPlayed: number;
+  thisWeekCount: number;
+  mostPlayedGameId: number | null;
+  mostPlayedCount: number;
+}> {
+  const all = await db.playSessions.toArray();
+  const totalPlayed = all.length;
+
+  // This week (Monday-based)
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((dayOfWeek + 6) % 7));
+  monday.setHours(0, 0, 0, 0);
+  const mondayStr = monday.toISOString().split("T")[0];
+  const thisWeekCount = all.filter((s) => s.playedAt >= mondayStr).length;
+
+  // Most played game
+  const counts = new Map<number, number>();
+  for (const s of all) {
+    counts.set(s.gameId, (counts.get(s.gameId) || 0) + 1);
+  }
+  let mostPlayedGameId: number | null = null;
+  let mostPlayedCount = 0;
+  for (const [gid, count] of counts) {
+    if (count > mostPlayedCount) {
+      mostPlayedGameId = gid;
+      mostPlayedCount = count;
+    }
+  }
+
+  return { totalPlayed, thisWeekCount, mostPlayedGameId, mostPlayedCount };
 }
 

@@ -5,14 +5,17 @@ import GameCard from "@/components/GameCard";
 import FilterBar from "@/components/FilterBar";
 import QuickFilters from "@/components/QuickFilters";
 import RandomPicker from "@/components/RandomPicker";
-import type { Game, GameFilters } from "@/types/game";
-import { getAllGames, deleteGame } from "@/lib/db-client";
+import type { Game, GameFilters, PlaySession } from "@/types/game";
+import { getAllGames, deleteGame, getAllSessions, getPlayStats, getGameById } from "@/lib/db-client";
 import Link from "next/link";
 
 export default function CollectionPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [filters, setFilters] = useState<GameFilters>({});
   const [loading, setLoading] = useState(true);
+  const [sessions, setSessions] = useState<PlaySession[]>([]);
+  const [stats, setStats] = useState<{ totalPlayed: number; thisWeekCount: number; mostPlayedGameId: number | null; mostPlayedCount: number } | null>(null);
+  const [mostPlayedGame, setMostPlayedGame] = useState<Game | null>(null);
 
   const handleDelete = useCallback(async (id: number) => {
     const game = games.find((g) => g.id === id);
@@ -25,8 +28,18 @@ export default function CollectionPage() {
 
   const loadGames = useCallback(async () => {
     try {
-      const data = await getAllGames();
+      const [data, allSessions, playStats] = await Promise.all([
+        getAllGames(),
+        getAllSessions(),
+        getPlayStats(),
+      ]);
       setGames(data);
+      setSessions(allSessions);
+      setStats(playStats);
+      if (playStats.mostPlayedGameId) {
+        const mpg = await getGameById(playStats.mostPlayedGameId);
+        setMostPlayedGame(mpg ?? null);
+      }
     } catch (error) {
       console.error("Failed to load games:", error);
     } finally {
@@ -58,11 +71,25 @@ export default function CollectionPage() {
   }, [loadGames]);
 
   const recentlyPlayed = useMemo(() => {
-    return games
-      .filter((g) => g.lastPlayed)
-      .sort((a, b) => new Date(b.lastPlayed!).getTime() - new Date(a.lastPlayed!).getTime())
-      .slice(0, 3);
-  }, [games]);
+    if (sessions.length === 0) {
+      // Fallback to lastPlayed field if no sessions yet
+      return games
+        .filter((g) => g.lastPlayed)
+        .sort((a, b) => new Date(b.lastPlayed!).getTime() - new Date(a.lastPlayed!).getTime())
+        .slice(0, 3);
+    }
+    // Use real session data: unique games, ordered by most recent session
+    const seen = new Set<number>();
+    const result: Game[] = [];
+    for (const s of sessions) {
+      if (seen.has(s.gameId)) continue;
+      seen.add(s.gameId);
+      const g = games.find((game) => game.id === s.gameId);
+      if (g) result.push(g);
+      if (result.length >= 3) break;
+    }
+    return result;
+  }, [games, sessions]);
 
   const dustyCount = useMemo(() => {
     return games.filter((g) => !g.lastPlayed).length;
@@ -143,6 +170,29 @@ export default function CollectionPage() {
       <div className="mt-3">
         <FilterBar filters={filters} onChange={setFilters} />
       </div>
+
+      {/* Stats */}
+      {stats && stats.totalPlayed > 0 && Object.keys(filters).length === 0 && (
+        <div className="mt-5 grid grid-cols-3 gap-3">
+          <div className="rounded-xl bg-warm-50 p-3.5 text-center ring-1 ring-warm-200/40">
+            <p className="text-[11px] font-semibold text-warm-500 uppercase tracking-wider">Gespielt</p>
+            <p className="mt-1 font-display text-xl font-bold text-warm-900">{stats.totalPlayed}</p>
+            <p className="text-[10px] text-warm-400">Partien gesamt</p>
+          </div>
+          <div className="rounded-xl bg-warm-50 p-3.5 text-center ring-1 ring-warm-200/40">
+            <p className="text-[11px] font-semibold text-warm-500 uppercase tracking-wider">Diese Woche</p>
+            <p className="mt-1 font-display text-xl font-bold text-forest">{stats.thisWeekCount}</p>
+            <p className="text-[10px] text-warm-400">Partien</p>
+          </div>
+          <div className="rounded-xl bg-warm-50 p-3.5 text-center ring-1 ring-warm-200/40">
+            <p className="text-[11px] font-semibold text-warm-500 uppercase tracking-wider">Meistgespielt</p>
+            <p className="mt-1 font-display text-sm font-bold text-warm-900 line-clamp-1">
+              {mostPlayedGame ? mostPlayedGame.name : "–"}
+            </p>
+            <p className="text-[10px] text-warm-400">{stats.mostPlayedCount}x gespielt</p>
+          </div>
+        </div>
+      )}
 
       {/* Zuletzt gespielt */}
       {recentlyPlayed.length > 0 && Object.keys(filters).length === 0 && (

@@ -137,6 +137,19 @@ export interface PlayGroup {
   updatedAt: string;
 }
 
+// ─── Play Sessions ───
+
+export interface PlaySession {
+  id: number;
+  gameId: number;
+  playedAt: string; // ISO date string (YYYY-MM-DD)
+  playerCount: number;
+  duration: number; // minutes
+  winnerId: number | null; // Player id
+  notes: string | null;
+  createdAt: string;
+}
+
 // ─── API Types ───
 
 export interface CreateGameInput {

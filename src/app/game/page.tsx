@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Game } from "@/types/game";
 import { PREDEFINED_TAGS } from "@/types/game";
-import { getGameById, updateGame } from "@/lib/db-client";
+import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPlayers } from "@/lib/db-client";
+import type { Player, PlaySession } from "@/types/game";
 
 function GameDetailContent() {
   const searchParams = useSearchParams();
@@ -13,11 +14,22 @@ function GameDetailContent() {
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showSessionModal, setShowSessionModal] = useState(false);
+  const [sessions, setSessions] = useState<PlaySession[]>([]);
+  const [players, setPlayers] = useState<Player[]>([]);
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
-    getGameById(id)
-      .then((data) => setGame(data ?? null))
+    Promise.all([
+      getGameById(id),
+      getSessionsByGame(id),
+      getAllPlayers(),
+    ])
+      .then(([data, sess, pl]) => {
+        setGame(data ?? null);
+        setSessions(sess);
+        setPlayers(pl);
+      })
       .catch(() => setGame(null))
       .finally(() => setLoading(false));
   }, [id]);
@@ -171,12 +183,17 @@ function GameDetailContent() {
           {/* Quick actions */}
           <div className="mt-5 flex flex-wrap gap-2">
             <button
-              onClick={markAsPlayed}
-              disabled={saving}
+              onClick={() => setShowSessionModal(true)}
               className="rounded-xl bg-forest px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
             >
-              Heute gespielt
+              Gespielt!
             </button>
+            <Link
+              href={`/game/history?id=${game.id}`}
+              className="rounded-xl bg-warm-100 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+            >
+              {sessions.length} {sessions.length === 1 ? "Partie" : "Partien"}
+            </Link>
             {game.lastPlayed && (
               <span className="inline-flex items-center rounded-xl bg-warm-50 px-3.5 py-2 text-sm text-warm-500 ring-1 ring-warm-200/60">
                 Zuletzt: {new Date(game.lastPlayed).toLocaleDateString("de-DE")}
@@ -283,6 +300,21 @@ function GameDetailContent() {
         </div>
       </div>
 
+      {/* Session Modal */}
+      {showSessionModal && (
+        <PlaySessionModal
+          game={game}
+          players={players}
+          onClose={() => setShowSessionModal(false)}
+          onSaved={async (session) => {
+            setSessions((prev) => [session, ...prev]);
+            const updated = await getGameById(game.id);
+            if (updated) setGame(updated);
+            setShowSessionModal(false);
+          }}
+        />
+      )}
+
       {saving && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 rounded-xl bg-invert px-5 py-2.5 text-sm font-medium text-invert-text shadow-xl sm:bottom-6">
           Wird gespeichert...
@@ -297,6 +329,133 @@ export default function GameDetailPage() {
     <Suspense fallback={<div className="flex min-h-[50vh] items-center justify-center"><div className="spinner" /></div>}>
       <GameDetailContent />
     </Suspense>
+  );
+}
+
+function PlaySessionModal({
+  game,
+  players,
+  onClose,
+  onSaved,
+}: {
+  game: Game;
+  players: Player[];
+  onClose: () => void;
+  onSaved: (session: PlaySession) => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const [playedAt, setPlayedAt] = useState(today);
+  const [playerCount, setPlayerCount] = useState(game.minPlayers);
+  const [duration, setDuration] = useState(game.playingTime);
+  const [winnerId, setWinnerId] = useState<number | null>(null);
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    const session = await createPlaySession({
+      gameId: game.id,
+      playedAt,
+      playerCount,
+      duration,
+      winnerId: winnerId || null,
+      notes: notes || null,
+    });
+    onSaved(session);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-900/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="mx-4 w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="font-display text-xl font-bold text-warm-900">Partie eintragen</h2>
+        <p className="mt-1 text-sm text-warm-500">{game.name}</p>
+
+        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-warm-500 uppercase tracking-wider">Datum</label>
+            <input
+              type="date"
+              value={playedAt}
+              onChange={(e) => setPlayedAt(e.target.value)}
+              max={today}
+              required
+              className="mt-1.5 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-warm-500 uppercase tracking-wider">Spieler</label>
+              <input
+                type="number"
+                value={playerCount}
+                onChange={(e) => setPlayerCount(Number(e.target.value))}
+                min={1}
+                max={20}
+                required
+                className="mt-1.5 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-warm-500 uppercase tracking-wider">Dauer (Min)</label>
+              <input
+                type="number"
+                value={duration}
+                onChange={(e) => setDuration(Number(e.target.value))}
+                min={1}
+                required
+                className="mt-1.5 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+              />
+            </div>
+          </div>
+
+          {players.length > 0 && (
+            <div>
+              <label className="text-xs font-semibold text-warm-500 uppercase tracking-wider">Gewinner (optional)</label>
+              <select
+                value={winnerId ?? ""}
+                onChange={(e) => setWinnerId(e.target.value ? Number(e.target.value) : null)}
+                className="mt-1.5 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+              >
+                <option value="">– Kein Gewinner –</option>
+                {players.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="text-xs font-semibold text-warm-500 uppercase tracking-wider">Notizen (optional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Wie war die Partie?"
+              className="mt-1.5 w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+            >
+              Abbrechen
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98] disabled:opacity-50"
+            >
+              {submitting ? "Speichern..." : "Speichern"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
