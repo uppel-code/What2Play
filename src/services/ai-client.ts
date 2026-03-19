@@ -357,7 +357,7 @@ async function callGeminiText(apiKey: string, prompt: string): Promise<string> {
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     tools: [{ google_search: {} }],
-    generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 2048, seed: Math.floor(Date.now()) },
   };
 
   const { status, data } = await aiPost(url, body, {});
@@ -374,7 +374,7 @@ async function callOpenAIText(apiKey: string, prompt: string): Promise<string> {
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: prompt }],
     max_tokens: 2048,
-    temperature: 0.4,
+    temperature: 0.7,
   };
 
   const { status, data } = await aiPost(url, body, { Authorization: `Bearer ${apiKey}` });
@@ -390,7 +390,7 @@ async function callClaudeText(apiKey: string, prompt: string): Promise<string> {
   const body = {
     model: "claude-sonnet-4-20250514",
     max_tokens: 2048,
-    temperature: 0.4,
+    temperature: 0.7,
     messages: [{ role: "user", content: prompt }],
   };
 
@@ -489,22 +489,24 @@ export async function askRuleQuestion(
   if (!config) throw new Error("AI_NOT_CONFIGURED");
 
   const mechanicsHint = mechanics.length > 0 ? ` Das Spiel nutzt folgende Mechaniken: ${mechanics.join(", ")}.` : "";
-  const systemPrompt = `Du bist ein Regelexperte für das Brettspiel "${gameName}".${mechanicsHint} Antworte NUR basierend auf den offiziellen Regeln. Wenn du dir nicht sicher bist, sage ehrlich dass du dir nicht 100% sicher bist und empfehle die offizielle Anleitung zu prüfen. ERFINDE KEINE Regeln. Antworte kurz und präzise auf Deutsch. Nutze • für Aufzählungen. Keine Floskeln.`;
+  const systemPrompt = `Du bist ein Regelexperte für das Brettspiel "${gameName}".${mechanicsHint} Antworte NUR basierend auf den offiziellen Regeln. Wenn du dir nicht sicher bist, sage ehrlich dass du dir nicht 100% sicher bist und empfehle die offizielle Anleitung zu prüfen. ERFINDE KEINE Regeln. Antworte kurz und präzise auf Deutsch. Nutze • für Aufzählungen. Keine Floskeln. Recherchiere die Antwort jedes Mal neu. Verlasse dich nicht auf vorherige Antworten.`;
 
-  // Build conversation with last 5 messages for context
-  const recentHistory = history.slice(-5);
+  // Only send user questions as context (not AI responses) to prevent self-reinforcement
+  const recentUserQuestions = history
+    .filter((m) => m.role === "user")
+    .slice(-3);
 
   let responseText: string;
 
   switch (config.provider) {
     case "gemini":
-      responseText = await callGeminiChat(config.apiKey, systemPrompt, recentHistory, question);
+      responseText = await callGeminiChat(config.apiKey, systemPrompt, recentUserQuestions, question);
       break;
     case "openai":
-      responseText = await callOpenAIChat(config.apiKey, systemPrompt, recentHistory, question);
+      responseText = await callOpenAIChat(config.apiKey, systemPrompt, recentUserQuestions, question);
       break;
     case "claude":
-      responseText = await callClaudeChat(config.apiKey, systemPrompt, recentHistory, question);
+      responseText = await callClaudeChat(config.apiKey, systemPrompt, recentUserQuestions, question);
       break;
     default:
       throw new Error("UNKNOWN_PROVIDER");
@@ -529,7 +531,7 @@ async function callGeminiChat(apiKey: string, systemPrompt: string, history: Rul
   const body = {
     contents,
     tools: [{ google_search: {} }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 1024, seed: Math.floor(Date.now()) },
   };
 
   const { status, data } = await aiPost(url, body, {});
@@ -554,7 +556,7 @@ async function callOpenAIChat(apiKey: string, systemPrompt: string, history: Rul
     model: "gpt-4o-mini",
     messages,
     max_tokens: 1024,
-    temperature: 0.3,
+    temperature: 0.7,
   };
 
   const { status, data } = await aiPost(url, body, { Authorization: `Bearer ${apiKey}` });
@@ -577,6 +579,7 @@ async function callClaudeChat(apiKey: string, systemPrompt: string, history: Rul
   const body = {
     model: "claude-sonnet-4-20250514",
     max_tokens: 1024,
+    temperature: 0.7,
     system: systemPrompt,
     messages,
   };

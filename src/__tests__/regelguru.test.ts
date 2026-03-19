@@ -81,7 +81,7 @@ describe("askRuleQuestion", () => {
     expect(systemPrompt).toContain("Mechaniken");
   });
 
-  it("passes history to API (max 5 messages)", async () => {
+  it("passes only user questions as history (max 3, no AI responses)", async () => {
     mockGeminiFetchResponse("Antwort");
 
     const history: RuleMessage[] = [
@@ -98,13 +98,16 @@ describe("askRuleQuestion", () => {
 
     const fetchCall = vi.mocked(fetch).mock.calls[0];
     const body = JSON.parse(fetchCall[1]!.body as string);
-    // Gemini format: system(user) + ack(model) + history + question
-    // history.slice(-5) = last 5 messages
     const contents = body.contents;
     // contents[0] = system prompt (user), contents[1] = ack (model)
-    // contents[2..6] = last 5 history messages, contents[7] = new question
-    expect(contents).toHaveLength(2 + 5 + 1); // system + ack + 5 history + question
+    // contents[2..4] = last 3 user questions only, contents[5] = new question
+    expect(contents).toHaveLength(2 + 3 + 1); // system + ack + 3 user questions + question
     expect(contents[contents.length - 1].parts[0].text).toBe("Neue Frage");
+    // Verify no AI responses are included
+    const historyContents = contents.slice(2, -1);
+    historyContents.forEach((c: { role: string }) => {
+      expect(c.role).toBe("user");
+    });
   });
 
   it("returns trimmed response", async () => {
