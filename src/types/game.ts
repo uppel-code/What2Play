@@ -204,6 +204,16 @@ export interface UpdateGameInput extends Partial<CreateGameInput> {
   lastPlayed?: string | null;
 }
 
+// ─── Chat Messages (RegelGuru) ───
+
+export interface ChatMessage {
+  id: number;
+  gameId: number;
+  role: "user" | "assistant";
+  text: string;
+  createdAt: string;
+}
+
 // ─── BGG Search Types ───
 
 export interface BggSearchResult {

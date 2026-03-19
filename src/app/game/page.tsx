@@ -9,6 +9,7 @@ import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPl
 import { generateQuickRules, isAiConfigured } from "@/services/ai-client";
 import { saveQuickRules, getQuickRules } from "@/lib/db-client";
 import { COMMON_MECHANICS as AI_MECHANICS } from "@/types/game";
+import RegelGuru from "@/components/RegelGuru";
 import type { Player, PlaySession } from "@/types/game";
 
 function GameDetailContent() {
@@ -255,6 +256,9 @@ function GameDetailContent() {
               </span>
             )}
           </div>
+
+          {/* RegelGuru Chat */}
+          {aiAvailable && <RegelGuru game={game} />}
 
           {/* Tags */}
           <div className="mt-8">

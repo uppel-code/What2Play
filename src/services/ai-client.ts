@@ -469,6 +469,127 @@ Antworte mit 150-250 Wörtern. Deutsch. Nutze • für Listen.`;
   return responseText.trim();
 }
 
+// ─── RegelGuru Chat ───
+
+export interface RuleMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export async function askRuleQuestion(
+  gameName: string,
+  mechanics: string[],
+  question: string,
+  history: RuleMessage[]
+): Promise<string> {
+  const config = await getAiConfig();
+  if (!config) throw new Error("AI_NOT_CONFIGURED");
+
+  const mechanicsHint = mechanics.length > 0 ? ` Mechaniken: ${mechanics.join(", ")}.` : "";
+  const systemPrompt = `Du bist der Regelguru für "${gameName}".${mechanicsHint} Antworte kurz und präzise auf Deutsch. Nutze • für Aufzählungen. Keine Floskeln.`;
+
+  // Build conversation with last 5 messages for context
+  const recentHistory = history.slice(-5);
+
+  let responseText: string;
+
+  switch (config.provider) {
+    case "gemini":
+      responseText = await callGeminiChat(config.apiKey, systemPrompt, recentHistory, question);
+      break;
+    case "openai":
+      responseText = await callOpenAIChat(config.apiKey, systemPrompt, recentHistory, question);
+      break;
+    case "claude":
+      responseText = await callClaudeChat(config.apiKey, systemPrompt, recentHistory, question);
+      break;
+    default:
+      throw new Error("UNKNOWN_PROVIDER");
+  }
+
+  return responseText.trim();
+}
+
+async function callGeminiChat(apiKey: string, systemPrompt: string, history: RuleMessage[], question: string): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+  const contents = [
+    { role: "user", parts: [{ text: systemPrompt }] },
+    { role: "model", parts: [{ text: "Verstanden! Ich bin der Regelguru. Stelle mir deine Frage." }] },
+    ...history.map((m) => ({
+      role: m.role === "user" ? "user" : "model",
+      parts: [{ text: m.text }],
+    })),
+    { role: "user", parts: [{ text: question }] },
+  ];
+
+  const body = {
+    contents,
+    generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+  };
+
+  const { status, data } = await aiPost(url, body, {});
+  if (status === 400 || status === 403) throw new Error("AI_INVALID_KEY");
+  if (status === 429) throw new Error("AI_RATE_LIMIT");
+  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+
+  const parsed = JSON.parse(data);
+  return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+async function callOpenAIChat(apiKey: string, systemPrompt: string, history: RuleMessage[], question: string): Promise<string> {
+  const url = "https://api.openai.com/v1/chat/completions";
+
+  const messages = [
+    { role: "system", content: systemPrompt },
+    ...history.map((m) => ({ role: m.role, content: m.text })),
+    { role: "user", content: question },
+  ];
+
+  const body = {
+    model: "gpt-4o-mini",
+    messages,
+    max_tokens: 1024,
+    temperature: 0.3,
+  };
+
+  const { status, data } = await aiPost(url, body, { Authorization: `Bearer ${apiKey}` });
+  if (status === 401) throw new Error("AI_INVALID_KEY");
+  if (status === 429) throw new Error("AI_RATE_LIMIT");
+  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+
+  const parsed = JSON.parse(data);
+  return parsed?.choices?.[0]?.message?.content || "";
+}
+
+async function callClaudeChat(apiKey: string, systemPrompt: string, history: RuleMessage[], question: string): Promise<string> {
+  const url = "https://api.anthropic.com/v1/messages";
+
+  const messages = [
+    ...history.map((m) => ({ role: m.role, content: m.text })),
+    { role: "user" as const, content: question },
+  ];
+
+  const body = {
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages,
+  };
+
+  const { status, data } = await aiPost(url, body, {
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+    "anthropic-dangerous-direct-browser-access": "true",
+  });
+  if (status === 401) throw new Error("AI_INVALID_KEY");
+  if (status === 429) throw new Error("AI_RATE_LIMIT");
+  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+
+  const parsed = JSON.parse(data);
+  return parsed?.content?.[0]?.text || "";
+}
+
 // ─── Response Parsing ───
 
 function parseAiResponse(text: string): RecognizedGame[] {

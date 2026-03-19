@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup, PlaySession } from "@/types/game";
+import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup, PlaySession, ChatMessage } from "@/types/game";
 
 // ─── Database Definition ───
 
@@ -58,11 +58,20 @@ interface PlaySessionRecord {
   createdAt: string;
 }
 
+interface ChatMessageRecord {
+  id: number;
+  gameId: number;
+  role: "user" | "assistant";
+  text: string;
+  createdAt: string;
+}
+
 const db = new Dexie("What2PlayDB") as Dexie & {
   games: EntityTable<GameRecord, "id">;
   players: EntityTable<PlayerRecord, "id">;
   playGroups: EntityTable<PlayGroupRecord, "id">;
   playSessions: EntityTable<PlaySessionRecord, "id">;
+  chatMessages: EntityTable<ChatMessageRecord, "id">;
 };
 
 db.version(1).stores({
@@ -109,6 +118,7 @@ db.version(6).stores({
   players: "++id, name",
   playGroups: "++id, name",
   playSessions: "++id, gameId, playedAt",
+  chatMessages: "++id, gameId, createdAt",
 }).upgrade((tx) => {
   return tx.table("games").toCollection().modify((game) => {
     if (game.quickRules === undefined) game.quickRules = null;
@@ -356,11 +366,12 @@ export async function getAllSessionsRaw(): Promise<PlaySession[]> {
 }
 
 export async function clearAllData(): Promise<void> {
-  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions], async () => {
+  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions, db.chatMessages], async () => {
     await db.games.clear();
     await db.players.clear();
     await db.playGroups.clear();
     await db.playSessions.clear();
+    await db.chatMessages.clear();
   });
 }
 
@@ -416,5 +427,40 @@ export async function getPlayStats(): Promise<{
   }
 
   return { totalPlayed, thisWeekCount, mostPlayedGameId, mostPlayedCount };
+}
+
+// ─── Chat Message Operations (RegelGuru) ───
+
+export async function getChatMessages(gameId: number): Promise<ChatMessage[]> {
+  return db.chatMessages
+    .where("gameId")
+    .equals(gameId)
+    .sortBy("createdAt");
+}
+
+export async function addChatMessage(gameId: number, role: "user" | "assistant", text: string): Promise<ChatMessage> {
+  const now = new Date().toISOString();
+  const id = await db.chatMessages.add({
+    gameId,
+    role,
+    text,
+    createdAt: now,
+  } as ChatMessageRecord);
+  return { id: id as number, gameId, role, text, createdAt: now };
+}
+
+export async function clearChatMessages(gameId: number): Promise<void> {
+  await db.chatMessages.where("gameId").equals(gameId).delete();
+}
+
+export async function trimChatMessages(gameId: number, maxMessages: number = 10): Promise<void> {
+  const messages = await db.chatMessages
+    .where("gameId")
+    .equals(gameId)
+    .sortBy("createdAt");
+  if (messages.length > maxMessages) {
+    const toDelete = messages.slice(0, messages.length - maxMessages);
+    await db.chatMessages.bulkDelete(toDelete.map((m) => m.id));
+  }
 }
 
