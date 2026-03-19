@@ -29,11 +29,23 @@
 **Casual Users want:** Random picker (KILLER FEATURE), one-tap filters, simple UI
 **Deprioritized:** Play session logging (only power users care)
 
-### v0.4 - Play Sessions
-- [ ] Log played games (date, players, winner)
-- [ ] Play history per game
-- [ ] Statistics dashboard (most played, win rates)
-- [ ] "Lange nicht gespielt" filter
+### v0.4 - Play Sessions ✅ COMPLETED (2026-03-19)
+- [x] Log played games (date, players, winner)
+- [x] Play history per game
+- [x] Statistics dashboard (most played, win rates)
+- [x] "Lange nicht gespielt" filter
+- [x] Shame Pile ("Verstaubt") tracker
+- [x] BGG Ratings on cards
+- [x] Swipe-to-delete
+- [x] Export/Import backup
+- [x] Mechanics search + Coop filter
+- [x] Improved "Heute spielen" with categories
+
+### v0.5 - Quick Rules & Help (NEU!)
+- [ ] 🎲 "Wie ging das nochmal?" Button auf Spieldetails
+- [ ] AI-generierte Regel-Kurzfassung
+- [ ] YouTube Erklärvideo-Links (BGG/YouTube API)
+- [ ] "Regeln vergessen?" Badge für lange nicht gespielte Spiele
 
 ### v0.5 - Smart Recommendations
 - [ ] Improve "Heute spielen" algorithm
@@ -58,6 +70,13 @@
 - Barcode scanner
 - Widget for "Spiel des Tages"
 - Notifications ("Du hast X seit 3 Monaten nicht gespielt")
+
+### 💰 v0.8 - Verkaufsunterstützung (User Request)
+- [ ] Spiel als "Zum Verkauf" markieren
+- [ ] AI-generierter Verkaufstext
+- [ ] Preisvorschlag (BGG Marketplace / eBay Daten)
+- [ ] Copy-to-Clipboard für Kleinanzeigen
+- [ ] Foto-Upload Erinnerung
 
 ---
 
