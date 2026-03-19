@@ -227,6 +227,42 @@ export interface ChatMessage {
   createdAt: string;
 }
 
+// ─── Loans (Leih-Tracker) ───
+
+export interface Loan {
+  id: number;
+  gameId: number;
+  personName: string;
+  loanDate: string; // ISO date string (YYYY-MM-DD)
+  returnedAt: string | null; // ISO date string when returned, null if still out
+  createdAt: string;
+}
+
+// ─── Achievements ───
+
+export type AchievementKey =
+  | "first_game"
+  | "collector_10"
+  | "collector_50"
+  | "shame_buster"
+  | "variety_5"
+  | "streak_3"
+  | "rule_master"
+  | "explorer";
+
+export interface Achievement {
+  id: number;
+  key: AchievementKey;
+  unlockedAt: string; // ISO date string
+}
+
+export interface AchievementDefinition {
+  key: AchievementKey;
+  title: string;
+  description: string;
+  icon: string;
+}
+
 // ─── BGG Search Types ───
 
 export interface BggSearchResult {

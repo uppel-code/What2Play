@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { getBggToken, setBggToken, isBggConfigured } from "@/services/bgg-client";
 import { getAiConfig, setAiConfig, clearAiConfig, isAiConfigured, getGameLanguage, setGameLanguage } from "@/services/ai-client";
 import type { AiProvider, GameLanguage } from "@/services/ai-client";
-import { getGameCount, getAllGamesRaw, getAllPlayersRaw, getAllPlayGroupsRaw, getAllSessionsRaw, clearAllData, bulkImportData } from "@/lib/db-client";
+import { getGameCount, getAllGamesRaw, getAllPlayersRaw, getAllPlayGroupsRaw, getAllSessionsRaw, getAllLoansRaw, clearAllData, bulkImportData } from "@/lib/db-client";
 import { useTheme } from "@/components/ThemeProvider";
 import type { ThemeMode } from "@/services/theme";
 import { createBackup, downloadBackup, readFileAsText, parseBackup, getBackupPreview, type BackupData, type BackupPreview } from "@/services/backup";
@@ -113,13 +113,14 @@ export default function SettingsPage() {
     setExporting(true);
     setExportDone(false);
     try {
-      const [games, players, playGroups, sessions] = await Promise.all([
+      const [games, players, playGroups, sessions, loans] = await Promise.all([
         getAllGamesRaw(),
         getAllPlayersRaw(),
         getAllPlayGroupsRaw(),
         getAllSessionsRaw(),
+        getAllLoansRaw(),
       ]);
-      const backup = await createBackup(games, players, playGroups, sessions);
+      const backup = await createBackup(games, players, playGroups, sessions, loans);
       downloadBackup(backup);
       setExportDone(true);
       setTimeout(() => setExportDone(false), 3000);
@@ -160,7 +161,8 @@ export default function SettingsPage() {
         importData.games,
         importData.players,
         importData.playGroups,
-        importData.playSessions
+        importData.playSessions,
+        importData.loans ?? []
       );
       // Restore settings
       if (importData.settings) {

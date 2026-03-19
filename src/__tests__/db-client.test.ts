@@ -22,6 +22,12 @@ import {
   getAllSessions,
   deletePlaySession,
   getPlayStats,
+  createLoan,
+  returnLoan,
+  deleteLoan,
+  getActiveLoanByGame,
+  getLoansByGame,
+  getAllActiveLoans,
 } from "@/lib/db-client";
 import type { CreateGameInput } from "@/types/game";
 
@@ -356,6 +362,97 @@ describe("db-client", () => {
       expect(stats.thisWeekCount).toBe(0);
       expect(stats.mostPlayedGameId).toBeNull();
       expect(stats.mostPlayedCount).toBe(0);
+    });
+  });
+
+  // ── Loan operations (Leih-Tracker) ──
+
+  describe("loan operations", () => {
+    it("creates a loan and retrieves it", async () => {
+      const game = await createGame(sampleGame);
+      const loan = await createLoan({
+        gameId: game.id,
+        personName: "Alex",
+        loanDate: "2026-03-01",
+      });
+
+      expect(loan.id).toBeDefined();
+      expect(loan.gameId).toBe(game.id);
+      expect(loan.personName).toBe("Alex");
+      expect(loan.loanDate).toBe("2026-03-01");
+      expect(loan.returnedAt).toBeNull();
+    });
+
+    it("gets active loan by game", async () => {
+      const game = await createGame(sampleGame);
+      await createLoan({ gameId: game.id, personName: "Alex", loanDate: "2026-03-01" });
+
+      const active = await getActiveLoanByGame(game.id);
+      expect(active).toBeDefined();
+      expect(active!.personName).toBe("Alex");
+    });
+
+    it("returns undefined when no active loan exists", async () => {
+      const game = await createGame(sampleGame);
+      const active = await getActiveLoanByGame(game.id);
+      expect(active).toBeUndefined();
+    });
+
+    it("returns a loan (marks as returned)", async () => {
+      const game = await createGame(sampleGame);
+      const loan = await createLoan({ gameId: game.id, personName: "Alex", loanDate: "2026-03-01" });
+
+      const returned = await returnLoan(loan.id);
+      expect(returned).toBeDefined();
+      expect(returned!.returnedAt).not.toBeNull();
+
+      const active = await getActiveLoanByGame(game.id);
+      expect(active).toBeUndefined();
+    });
+
+    it("deletes a loan", async () => {
+      const game = await createGame(sampleGame);
+      const loan = await createLoan({ gameId: game.id, personName: "Alex", loanDate: "2026-03-01" });
+
+      const result = await deleteLoan(loan.id);
+      expect(result).toBe(true);
+
+      const loans = await getLoansByGame(game.id);
+      expect(loans).toHaveLength(0);
+    });
+
+    it("returns false when deleting non-existent loan", async () => {
+      const result = await deleteLoan(999);
+      expect(result).toBe(false);
+    });
+
+    it("gets all active loans across games", async () => {
+      const game1 = await createGame(sampleGame);
+      const game2 = await createGame(sampleGame2);
+      await createLoan({ gameId: game1.id, personName: "Alex", loanDate: "2026-03-01" });
+      await createLoan({ gameId: game2.id, personName: "Bob", loanDate: "2026-03-05" });
+
+      const activeLoans = await getAllActiveLoans();
+      expect(activeLoans).toHaveLength(2);
+    });
+
+    it("returned loans are not included in active loans", async () => {
+      const game = await createGame(sampleGame);
+      const loan = await createLoan({ gameId: game.id, personName: "Alex", loanDate: "2026-03-01" });
+      await returnLoan(loan.id);
+
+      const activeLoans = await getAllActiveLoans();
+      expect(activeLoans).toHaveLength(0);
+    });
+
+    it("gets loan history for a game", async () => {
+      const game = await createGame(sampleGame);
+      const loan1 = await createLoan({ gameId: game.id, personName: "Alex", loanDate: "2026-02-01" });
+      await returnLoan(loan1.id);
+      await createLoan({ gameId: game.id, personName: "Bob", loanDate: "2026-03-01" });
+
+      const loans = await getLoansByGame(game.id);
+      expect(loans).toHaveLength(2);
     });
   });
 });

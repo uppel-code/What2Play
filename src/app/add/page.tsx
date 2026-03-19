@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import type { BggGameData, BggSearchResult } from "@/types/game";
+import type { BggGameData, BggSearchResult, AchievementKey } from "@/types/game";
 import { createGame, getGameByBggId } from "@/lib/db-client";
 import { searchBgg as bggSearch, fetchBggThing, fetchBggCollection, isBggConfigured } from "@/services/bgg-client";
 import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch, getGameLanguage } from "@/services/ai-client";
 import type { RecognizedGame, VerificationResult } from "@/services/ai-client";
+import { checkOnGameAdd, checkOnPhotoScan } from "@/services/achievements";
+import AchievementToast from "@/components/AchievementToast";
 
 type ActiveTab = "bgg-search" | "bgg-collection" | "bgg-bulk" | "photo-scan" | "manual";
 
@@ -108,6 +110,7 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bggConfigured, setBggConfigured] = useState<boolean | null>(null);
+  const [achievementQueue, setAchievementQueue] = useState<AchievementKey[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -193,6 +196,12 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
         bggRank: selectedGame.bggRank,
         owned: true,
       });
+      // Check achievements
+      const newAchievements = await checkOnGameAdd();
+      if (newAchievements.length > 0) {
+        setAchievementQueue(newAchievements);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
       router.push(`/game?id=${game.id}`);
     } catch (err) {
       if (err instanceof Error && err.message.includes("ConstraintError")) {
@@ -365,6 +374,13 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
             </button>
           </div>
         </div>
+      )}
+
+      {achievementQueue.length > 0 && (
+        <AchievementToast
+          achievementKey={achievementQueue[0]}
+          onDone={() => setAchievementQueue((prev) => prev.slice(1))}
+        />
       )}
     </div>
   );
@@ -778,6 +794,7 @@ function PhotoScanTab() {
   const [importing, setImporting] = useState(false);
   const [importSummary, setImportSummary] = useState<{ imported: number; skipped: number; failed: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [achievementQueue, setAchievementQueue] = useState<AchievementKey[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -1131,6 +1148,17 @@ function PhotoScanTab() {
 
     setImportSummary({ imported, skipped, failed });
     setImporting(false);
+
+    // Check achievements for photo scan + game add
+    if (imported > 0) {
+      const newAchievements = [
+        ...(await checkOnPhotoScan()),
+        ...(await checkOnGameAdd()),
+      ];
+      if (newAchievements.length > 0) {
+        setAchievementQueue(newAchievements);
+      }
+    }
   }
 
   function handleReset() {
@@ -1445,6 +1473,12 @@ function PhotoScanTab() {
           </button>
         </div>
       )}
+      {achievementQueue.length > 0 && (
+        <AchievementToast
+          achievementKey={achievementQueue[0]}
+          onDone={() => setAchievementQueue((prev) => prev.slice(1))}
+        />
+      )}
     </div>
   );
 }
@@ -1453,6 +1487,7 @@ function PhotoScanTab() {
 
 function ManualTab({ router }: { router: ReturnType<typeof useRouter> }) {
   const [saving, setSaving] = useState(false);
+  const [achievementQueue, setAchievementQueue] = useState<AchievementKey[]>([]);
   const [form, setForm] = useState({
     name: "",
     minPlayers: 1,
@@ -1475,6 +1510,11 @@ function ManualTab({ router }: { router: ReturnType<typeof useRouter> }) {
         thumbnail: form.thumbnail || null,
         owned: true,
       });
+      const newAchievements = await checkOnGameAdd();
+      if (newAchievements.length > 0) {
+        setAchievementQueue(newAchievements);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
       router.push(`/game?id=${game.id}`);
     } catch {
       setSaving(false);
@@ -1542,6 +1582,13 @@ function ManualTab({ router }: { router: ReturnType<typeof useRouter> }) {
       >
         {saving ? "Wird gespeichert..." : "Spiel hinzufügen"}
       </button>
+
+      {achievementQueue.length > 0 && (
+        <AchievementToast
+          achievementKey={achievementQueue[0]}
+          onDone={() => setAchievementQueue((prev) => prev.slice(1))}
+        />
+      )}
     </form>
   );
 }

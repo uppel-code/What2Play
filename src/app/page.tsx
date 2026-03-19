@@ -5,8 +5,8 @@ import GameCard from "@/components/GameCard";
 import FilterBar from "@/components/FilterBar";
 import QuickFilters from "@/components/QuickFilters";
 import RandomPicker from "@/components/RandomPicker";
-import type { Game, GameFilters, PlaySession } from "@/types/game";
-import { getAllGames, deleteGame, getAllSessions, getPlayStats, getGameById } from "@/lib/db-client";
+import type { Game, GameFilters, PlaySession, Loan } from "@/types/game";
+import { getAllGames, deleteGame, getAllSessions, getPlayStats, getGameById, getAllActiveLoans } from "@/lib/db-client";
 import Link from "next/link";
 
 export default function CollectionPage() {
@@ -14,6 +14,7 @@ export default function CollectionPage() {
   const [filters, setFilters] = useState<GameFilters>({});
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState<PlaySession[]>([]);
+  const [activeLoans, setActiveLoans] = useState<Loan[]>([]);
   const [stats, setStats] = useState<{ totalPlayed: number; thisWeekCount: number; mostPlayedGameId: number | null; mostPlayedCount: number } | null>(null);
   const [mostPlayedGame, setMostPlayedGame] = useState<Game | null>(null);
 
@@ -28,13 +29,15 @@ export default function CollectionPage() {
 
   const loadGames = useCallback(async () => {
     try {
-      const [data, allSessions, playStats] = await Promise.all([
+      const [data, allSessions, playStats, loans] = await Promise.all([
         getAllGames(),
         getAllSessions(),
         getPlayStats(),
+        getAllActiveLoans(),
       ]);
       setGames(data);
       setSessions(allSessions);
+      setActiveLoans(loans);
       setStats(playStats);
       if (playStats.mostPlayedGameId) {
         const mpg = await getGameById(playStats.mostPlayedGameId);
@@ -263,7 +266,7 @@ export default function CollectionPage() {
         <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {filteredGames.map((game, i) => (
             <div key={game.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 40, 400)}ms` }}>
-              <GameCard game={game} onDelete={handleDelete} />
+              <GameCard game={game} onDelete={handleDelete} activeLoan={activeLoans.find((l) => l.gameId === game.id) ?? null} />
             </div>
           ))}
         </div>

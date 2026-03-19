@@ -5,12 +5,14 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Game } from "@/types/game";
 import { PREDEFINED_TAGS, COMMON_MECHANICS } from "@/types/game";
-import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPlayers } from "@/lib/db-client";
+import { getGameById, updateGame, createPlaySession, getSessionsByGame, getAllPlayers, getActiveLoanByGame, createLoan, returnLoan } from "@/lib/db-client";
 import { generateQuickRules, isAiConfigured } from "@/services/ai-client";
 import { saveQuickRules, getQuickRules } from "@/lib/db-client";
 import { COMMON_MECHANICS as AI_MECHANICS } from "@/types/game";
 import RegelGuru from "@/components/RegelGuru";
-import type { Player, PlaySession } from "@/types/game";
+import type { Player, PlaySession, Loan, AchievementKey } from "@/types/game";
+import { checkOnPlaySession } from "@/services/achievements";
+import AchievementToast from "@/components/AchievementToast";
 
 function GameDetailContent() {
   const searchParams = useSearchParams();
@@ -26,6 +28,11 @@ function GameDetailContent() {
   const [aiAvailable, setAiAvailable] = useState(false);
   const [sessions, setSessions] = useState<PlaySession[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [activeLoan, setActiveLoan] = useState<Loan | null>(null);
+  const [showLoanForm, setShowLoanForm] = useState(false);
+  const [loanName, setLoanName] = useState("");
+  const [loanDate, setLoanDate] = useState(new Date().toISOString().split("T")[0]);
+  const [achievementQueue, setAchievementQueue] = useState<AchievementKey[]>([]);
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
@@ -34,12 +41,14 @@ function GameDetailContent() {
       getSessionsByGame(id),
       getAllPlayers(),
       isAiConfigured(),
+      getActiveLoanByGame(id),
     ])
-      .then(([data, sess, pl, aiOk]) => {
+      .then(([data, sess, pl, aiOk, loan]) => {
         setGame(data ?? null);
         setSessions(sess);
         setPlayers(pl);
         setAiAvailable(aiOk);
+        setActiveLoan(loan ?? null);
       })
       .catch(() => setGame(null))
       .finally(() => setLoading(false));
@@ -86,6 +95,33 @@ function GameDetailContent() {
     const updated = await updateGame(game.id, { lastPlayed: new Date().toISOString().split("T")[0] });
     if (updated) setGame(updated);
     setSaving(false);
+  }
+
+  async function handleLendGame() {
+    if (!game || !loanName.trim()) return;
+    setSaving(true);
+    const loan = await createLoan({
+      gameId: game.id,
+      personName: loanName.trim(),
+      loanDate,
+    });
+    setActiveLoan(loan);
+    setShowLoanForm(false);
+    setLoanName("");
+    setSaving(false);
+  }
+
+  async function handleReturnGame() {
+    if (!activeLoan) return;
+    setSaving(true);
+    await returnLoan(activeLoan.id);
+    setActiveLoan(null);
+    setSaving(false);
+  }
+
+  function loanDaysOut(loan: Loan): number {
+    const ms = Date.now() - new Date(loan.loanDate).getTime();
+    return Math.floor(ms / (1000 * 60 * 60 * 24));
   }
 
   async function openQuickRules() {
@@ -257,6 +293,78 @@ function GameDetailContent() {
             )}
           </div>
 
+          {/* Loan Status */}
+          <div className="mt-6">
+            {activeLoan ? (
+              <div className={`rounded-2xl border p-4 ${loanDaysOut(activeLoan) >= 28 ? "border-coral/40 bg-coral-light" : "border-amber/40 bg-amber-light"}`}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-warm-900">
+                      📦 Verliehen an {activeLoan.personName}
+                    </p>
+                    <p className="mt-0.5 text-xs text-warm-600">
+                      Seit {new Date(activeLoan.loanDate).toLocaleDateString("de-DE")} ({loanDaysOut(activeLoan)} Tage)
+                    </p>
+                    {loanDaysOut(activeLoan) >= 28 && (
+                      <p className="mt-1.5 text-xs font-semibold text-coral">
+                        Erinnerung: Schon über 4 Wochen verliehen!
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleReturnGame}
+                    disabled={saving}
+                    className="rounded-xl bg-forest px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark active:scale-[0.98]"
+                  >
+                    Zurückbekommen
+                  </button>
+                </div>
+              </div>
+            ) : showLoanForm ? (
+              <div className="rounded-2xl border border-warm-200/80 bg-surface p-4">
+                <h3 className="text-sm font-semibold text-warm-900 mb-3">Spiel verleihen</h3>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={loanName}
+                    onChange={(e) => setLoanName(e.target.value)}
+                    placeholder="Name der Person..."
+                    className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+                  />
+                  <input
+                    type="date"
+                    value={loanDate}
+                    onChange={(e) => setLoanDate(e.target.value)}
+                    max={new Date().toISOString().split("T")[0]}
+                    className="w-full rounded-xl border border-warm-200 bg-warm-50/50 px-3.5 py-2.5 text-sm text-warm-800 focus:border-forest focus:bg-surface focus:outline-none focus:ring-2 focus:ring-forest/10"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowLoanForm(false)}
+                      className="flex-1 rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+                    >
+                      Abbrechen
+                    </button>
+                    <button
+                      onClick={handleLendGame}
+                      disabled={saving || !loanName.trim()}
+                      className="flex-1 rounded-xl bg-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark active:scale-[0.98] disabled:opacity-50"
+                    >
+                      Verleihen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowLoanForm(true)}
+                className="rounded-xl bg-warm-100 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
+              >
+                📦 Verleihen...
+              </button>
+            )}
+          </div>
+
           {/* RegelGuru Chat */}
           {aiAvailable && <RegelGuru game={game} />}
 
@@ -373,6 +481,11 @@ function GameDetailContent() {
             const updated = await getGameById(game.id);
             if (updated) setGame(updated);
             setShowSessionModal(false);
+            // Check achievements
+            const newAchievements = await checkOnPlaySession(game.lastPlayed, game.mechanics);
+            if (newAchievements.length > 0) {
+              setAchievementQueue((prev) => [...prev, ...newAchievements]);
+            }
           }}
         />
       )}
@@ -494,6 +607,13 @@ function GameDetailContent() {
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 rounded-xl bg-invert px-5 py-2.5 text-sm font-medium text-invert-text shadow-xl sm:bottom-6">
           Wird gespeichert...
         </div>
+      )}
+
+      {achievementQueue.length > 0 && (
+        <AchievementToast
+          achievementKey={achievementQueue[0]}
+          onDone={() => setAchievementQueue((prev) => prev.slice(1))}
+        />
       )}
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import type { Player, PlayGroup } from "@/types/game";
+import type { Player, PlayGroup, Loan, Game } from "@/types/game";
 import {
   getAllPlayers,
   createPlayer,
@@ -11,13 +11,18 @@ import {
   createPlayGroup,
   updatePlayGroup,
   deletePlayGroup,
+  getAllActiveLoans,
+  getAllGames,
+  returnLoan,
 } from "@/lib/db-client";
 
 export default function GroupsPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [groups, setGroups] = useState<PlayGroup[]>([]);
+  const [activeLoans, setActiveLoans] = useState<Loan[]>([]);
+  const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"groups" | "players">("groups");
+  const [activeTab, setActiveTab] = useState<"groups" | "players" | "loans">("groups");
 
   // New player form
   const [newPlayerName, setNewPlayerName] = useState("");
@@ -33,9 +38,16 @@ export default function GroupsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [p, g] = await Promise.all([getAllPlayers(), getAllPlayGroups()]);
+      const [p, g, loans, allGames] = await Promise.all([
+        getAllPlayers(),
+        getAllPlayGroups(),
+        getAllActiveLoans(),
+        getAllGames(),
+      ]);
       setPlayers(p);
       setGroups(g);
+      setActiveLoans(loans);
+      setGames(allGames);
     } catch (error) {
       console.error("Failed to load data:", error);
     } finally {
@@ -152,6 +164,16 @@ export default function GroupsPage() {
         >
           Spieler ({players.length})
         </button>
+        <button
+          onClick={() => setActiveTab("loans")}
+          className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
+            activeTab === "loans"
+              ? "bg-surface text-warm-900 shadow-sm"
+              : "text-warm-500 hover:text-warm-700"
+          }`}
+        >
+          Verliehen ({activeLoans.length})
+        </button>
       </div>
 
       {activeTab === "players" && (
@@ -210,6 +232,68 @@ export default function GroupsPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {activeTab === "loans" && (
+        <div className="space-y-3">
+          {activeLoans.length === 0 ? (
+            <div className="rounded-2xl border border-warm-200/80 bg-surface p-8 text-center text-sm text-warm-500">
+              Aktuell sind keine Spiele verliehen
+            </div>
+          ) : (
+            activeLoans.map((loan) => {
+              const game = games.find((g) => g.id === loan.gameId);
+              const daysOut = Math.floor((Date.now() - new Date(loan.loanDate).getTime()) / (1000 * 60 * 60 * 24));
+              const overdue = daysOut >= 28;
+              return (
+                <div
+                  key={loan.id}
+                  className={`rounded-2xl border bg-surface p-5 ${overdue ? "border-coral/40" : "border-warm-200/80"}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="font-display text-lg font-bold text-warm-900">
+                        {game?.name ?? `Spiel #${loan.gameId}`}
+                      </h4>
+                      <p className="mt-0.5 text-sm text-warm-600">
+                        Verliehen an <span className="font-semibold">{loan.personName}</span>
+                      </p>
+                      <p className="text-xs text-warm-500">
+                        Seit {new Date(loan.loanDate).toLocaleDateString("de-DE")} ({daysOut} Tage)
+                      </p>
+                      {overdue && (
+                        <p className="mt-1 text-xs font-semibold text-coral">
+                          Schon über 4 Wochen verliehen!
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      {game && (
+                        <Link
+                          href={`/game?id=${game.id}`}
+                          className="rounded-lg p-2 text-warm-400 transition-colors hover:bg-warm-100 hover:text-warm-600"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        </Link>
+                      )}
+                      <button
+                        onClick={async () => {
+                          await returnLoan(loan.id);
+                          await loadData();
+                        }}
+                        className="rounded-xl bg-forest px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark active:scale-[0.98]"
+                      >
+                        Zurück
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )}
 

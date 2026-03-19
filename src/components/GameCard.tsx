@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRef, useState, useCallback } from "react";
-import type { Game } from "@/types/game";
+import type { Game, Loan } from "@/types/game";
 
 interface GameCardProps {
   game: Game;
   onDelete?: (id: number) => void;
+  activeLoan?: Loan | null;
 }
 
 export function daysSinceLastPlayed(lastPlayed: string | null): number | null {
@@ -29,7 +30,7 @@ function complexityColor(weight: number): string {
   return "bg-coral-light text-coral";
 }
 
-export default function GameCard({ game, onDelete }: GameCardProps) {
+export default function GameCard({ game, onDelete, activeLoan }: GameCardProps) {
   const [offsetX, setOffsetX] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
@@ -251,6 +252,11 @@ export default function GameCard({ game, onDelete }: GameCardProps) {
                     {tagLabel(tag)}
                   </span>
                 ))}
+              </div>
+            )}
+            {activeLoan && (
+              <div className="mt-2 rounded-lg bg-amber-light px-2 py-1 text-[11px] font-medium text-amber-dark">
+                📦 Verliehen an {activeLoan.personName}
               </div>
             )}
           </div>

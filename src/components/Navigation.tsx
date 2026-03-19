@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/today", label: "Heute", icon: "play" },
   { href: "/groups", label: "Gruppen", icon: "users" },
   { href: "/add", label: "Hinzufügen", icon: "plus" },
+  { href: "/achievements", label: "Awards", icon: "trophy" },
   { href: "/settings", label: "Settings", icon: "settings" },
 ] as const;
 
@@ -77,6 +78,12 @@ function NavIcon({ type, className }: { type: string; className?: string }) {
       return (
         <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      );
+    case "trophy":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 3h14l-1.5 6.5a5.5 5.5 0 01-11 0L5 3zM12 15v4m-4 2h8M8 3H5a2 2 0 00-2 2v1a4 4 0 004 4m10-7h3a2 2 0 012 2v1a4 4 0 01-4 4" />
         </svg>
       );
     case "settings":

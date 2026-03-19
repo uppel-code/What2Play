@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup, PlaySession, ChatMessage } from "@/types/game";
+import type { Game, CreateGameInput, UpdateGameInput, Player, PlayGroup, PlaySession, ChatMessage, Loan, Achievement, AchievementKey } from "@/types/game";
 
 // ─── Database Definition ───
 
@@ -66,12 +66,29 @@ interface ChatMessageRecord {
   createdAt: string;
 }
 
+interface LoanRecord {
+  id: number;
+  gameId: number;
+  personName: string;
+  loanDate: string;
+  returnedAt: string | null;
+  createdAt: string;
+}
+
+interface AchievementRecord {
+  id: number;
+  key: string;
+  unlockedAt: string;
+}
+
 const db = new Dexie("What2PlayDB") as Dexie & {
   games: EntityTable<GameRecord, "id">;
   players: EntityTable<PlayerRecord, "id">;
   playGroups: EntityTable<PlayGroupRecord, "id">;
   playSessions: EntityTable<PlaySessionRecord, "id">;
   chatMessages: EntityTable<ChatMessageRecord, "id">;
+  loans: EntityTable<LoanRecord, "id">;
+  achievements: EntityTable<AchievementRecord, "id">;
 };
 
 db.version(1).stores({
@@ -123,6 +140,25 @@ db.version(6).stores({
   return tx.table("games").toCollection().modify((game) => {
     if (game.quickRules === undefined) game.quickRules = null;
   });
+});
+
+db.version(7).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight, *mechanics",
+  players: "++id, name",
+  playGroups: "++id, name",
+  playSessions: "++id, gameId, playedAt",
+  chatMessages: "++id, gameId, createdAt",
+  loans: "++id, gameId, personName, returnedAt",
+});
+
+db.version(8).stores({
+  games: "++id, &bggId, name, [minPlayers+maxPlayers], playingTime, averageWeight, *mechanics",
+  players: "++id, name",
+  playGroups: "++id, name",
+  playSessions: "++id, gameId, playedAt",
+  chatMessages: "++id, gameId, createdAt",
+  loans: "++id, gameId, personName, returnedAt",
+  achievements: "++id, &key, unlockedAt",
 });
 
 // ─── CRUD Operations ───
@@ -366,12 +402,14 @@ export async function getAllSessionsRaw(): Promise<PlaySession[]> {
 }
 
 export async function clearAllData(): Promise<void> {
-  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions, db.chatMessages], async () => {
+  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions, db.chatMessages, db.loans, db.achievements], async () => {
     await db.games.clear();
     await db.players.clear();
     await db.playGroups.clear();
     await db.playSessions.clear();
     await db.chatMessages.clear();
+    await db.loans.clear();
+    await db.achievements.clear();
   });
 }
 
@@ -379,9 +417,10 @@ export async function bulkImportData(
   games: Game[],
   players: Player[],
   playGroups: PlayGroup[],
-  playSessions: PlaySession[]
+  playSessions: PlaySession[],
+  loans: Loan[] = []
 ): Promise<void> {
-  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions], async () => {
+  await db.transaction("rw", [db.games, db.players, db.playGroups, db.playSessions, db.loans], async () => {
     if (games.length > 0) await db.games.bulkPut(games as unknown as GameRecord[]);
     if (players.length > 0) await db.players.bulkPut(players.map((p) => ({
       id: p.id,
@@ -391,6 +430,7 @@ export async function bulkImportData(
     })));
     if (playGroups.length > 0) await db.playGroups.bulkPut(playGroups as unknown as PlayGroupRecord[]);
     if (playSessions.length > 0) await db.playSessions.bulkPut(playSessions as unknown as PlaySessionRecord[]);
+    if (loans.length > 0) await db.loans.bulkPut(loans as unknown as LoanRecord[]);
   });
 }
 
@@ -462,5 +502,78 @@ export async function trimChatMessages(gameId: number, maxMessages: number = 10)
     const toDelete = messages.slice(0, messages.length - maxMessages);
     await db.chatMessages.bulkDelete(toDelete.map((m) => m.id));
   }
+}
+
+// ─── Loan Operations (Leih-Tracker) ───
+
+export async function createLoan(data: {
+  gameId: number;
+  personName: string;
+  loanDate: string;
+}): Promise<Loan> {
+  const now = new Date().toISOString();
+  const record: Omit<LoanRecord, "id"> = {
+    gameId: data.gameId,
+    personName: data.personName,
+    loanDate: data.loanDate,
+    returnedAt: null,
+    createdAt: now,
+  };
+  const id = await db.loans.add(record as LoanRecord);
+  return (await db.loans.get(id))! as Loan;
+}
+
+export async function returnLoan(id: number): Promise<Loan | undefined> {
+  const existing = await db.loans.get(id);
+  if (!existing) return undefined;
+  const now = new Date().toISOString().split("T")[0];
+  await db.loans.update(id, { returnedAt: now });
+  return (await db.loans.get(id))! as Loan;
+}
+
+export async function deleteLoan(id: number): Promise<boolean> {
+  const existing = await db.loans.get(id);
+  if (!existing) return false;
+  await db.loans.delete(id);
+  return true;
+}
+
+export async function getActiveLoanByGame(gameId: number): Promise<Loan | undefined> {
+  const loans = await db.loans
+    .where("gameId")
+    .equals(gameId)
+    .filter((l) => l.returnedAt === null)
+    .toArray();
+  return loans[0] as Loan | undefined;
+}
+
+export async function getLoansByGame(gameId: number): Promise<Loan[]> {
+  return db.loans.where("gameId").equals(gameId).reverse().sortBy("loanDate") as Promise<Loan[]>;
+}
+
+export async function getAllActiveLoans(): Promise<Loan[]> {
+  return db.loans.filter((l) => l.returnedAt === null).toArray() as Promise<Loan[]>;
+}
+
+export async function getAllLoansRaw(): Promise<Loan[]> {
+  return db.loans.toArray() as Promise<Loan[]>;
+}
+
+// ─── Achievement Operations ───
+
+export async function getAchievement(key: AchievementKey): Promise<Achievement | undefined> {
+  return db.achievements.where("key").equals(key).first() as Promise<Achievement | undefined>;
+}
+
+export async function getAllAchievements(): Promise<Achievement[]> {
+  return db.achievements.toArray() as Promise<Achievement[]>;
+}
+
+export async function unlockAchievement(key: AchievementKey): Promise<Achievement | null> {
+  const existing = await db.achievements.where("key").equals(key).first();
+  if (existing) return null; // already unlocked
+  const now = new Date().toISOString();
+  const id = await db.achievements.add({ key, unlockedAt: now } as AchievementRecord);
+  return (await db.achievements.get(id))! as Achievement;
 }
 

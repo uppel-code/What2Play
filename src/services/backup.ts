@@ -6,9 +6,9 @@
  */
 
 import { Preferences } from "@capacitor/preferences";
-import type { Game, Player, PlayGroup, PlaySession } from "@/types/game";
+import type { Game, Player, PlayGroup, PlaySession, Loan } from "@/types/game";
 
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 3;
 
 export interface BackupData {
   version: number;
@@ -17,6 +17,7 @@ export interface BackupData {
   players: Player[];
   playGroups: PlayGroup[];
   playSessions: PlaySession[];
+  loans: Loan[];
   settings: {
     language: string;
     theme: string;
@@ -30,6 +31,7 @@ export interface BackupPreview {
   playerCount: number;
   playGroupCount: number;
   sessionCount: number;
+  loanCount: number;
 }
 
 /**
@@ -39,7 +41,8 @@ export async function createBackup(
   games: Game[],
   players: Player[],
   playGroups: PlayGroup[],
-  playSessions: PlaySession[]
+  playSessions: PlaySession[],
+  loans: Loan[] = []
 ): Promise<BackupData> {
   const { value: language } = await Preferences.get({ key: "game_language" });
   const { value: theme } = await Preferences.get({ key: "theme_mode" });
@@ -51,6 +54,7 @@ export async function createBackup(
     players,
     playGroups,
     playSessions,
+    loans,
     settings: {
       language: language || "de",
       theme: theme || "system",
@@ -124,6 +128,7 @@ export function parseBackup(jsonString: string): BackupData {
   data.players = Array.isArray(data.players) ? data.players : [];
   data.playGroups = Array.isArray(data.playGroups) ? data.playGroups : [];
   data.playSessions = Array.isArray(data.playSessions) ? data.playSessions : [];
+  data.loans = Array.isArray(data.loans) ? data.loans : [];
   data.settings = data.settings || { language: "de", theme: "system" };
 
   return data;
@@ -140,5 +145,6 @@ export function getBackupPreview(data: BackupData): BackupPreview {
     playerCount: data.players.length,
     playGroupCount: data.playGroups.length,
     sessionCount: data.playSessions.length,
+    loanCount: data.loans?.length ?? 0,
   };
 }
