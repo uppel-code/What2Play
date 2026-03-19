@@ -16,6 +16,10 @@ import { searchExpansions, searchExpansionsByName } from "@/services/bgg-client"
 import { checkOnPlaySession } from "@/services/achievements";
 import AchievementToast from "@/components/AchievementToast";
 import { generateQRMatrix, renderQRToCanvas, getBggUrl } from "@/services/qr-code";
+import { computeGameStats } from "@/services/win-loss-stats";
+import type { GameStats } from "@/services/win-loss-stats";
+import PieChart, { getPieColors } from "@/components/PieChart";
+import BarChart from "@/components/BarChart";
 
 function GameDetailContent() {
   const searchParams = useSearchParams();
@@ -50,6 +54,7 @@ function GameDetailContent() {
   const [expansionSearchResults, setExpansionSearchResults] = useState<BggSearchResult[]>([]);
   const [expansionSearchLoading, setExpansionSearchLoading] = useState(false);
   const [expansionManualName, setExpansionManualName] = useState("");
+  const [gameStats, setGameStats] = useState<GameStats | null>(null);
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
@@ -68,6 +73,7 @@ function GameDetailContent() {
         setAiAvailable(aiOk);
         setActiveLoan(loan ?? null);
         setExpansions(exps);
+        setGameStats(computeGameStats(sess, pl));
       })
       .catch(() => setGame(null))
       .finally(() => setLoading(false));
@@ -643,6 +649,73 @@ function GameDetailContent() {
           {/* RegelGuru Chat */}
           {aiAvailable && <RegelGuru game={game} />}
 
+          {/* Statistiken */}
+          {gameStats && gameStats.totalPlayed > 0 && (
+            <div className="mt-8" data-testid="game-stats-section">
+              <h3 className="text-xs font-semibold text-warm-500 uppercase tracking-wider mb-3">Statistiken</h3>
+              <div className="space-y-4">
+                {/* Quick Stats Grid */}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-xl bg-warm-50 p-3 text-center ring-1 ring-warm-200/40 dark:bg-warm-800 dark:ring-warm-700">
+                    <p className="text-[11px] font-semibold text-warm-500 uppercase tracking-wider">Gespielt</p>
+                    <p className="mt-1 font-display text-xl font-bold text-warm-900">{gameStats.totalPlayed}x</p>
+                  </div>
+                  <div className="rounded-xl bg-warm-50 p-3 text-center ring-1 ring-warm-200/40 dark:bg-warm-800 dark:ring-warm-700">
+                    <p className="text-[11px] font-semibold text-warm-500 uppercase tracking-wider">&#8709; Dauer</p>
+                    <p className="mt-1 font-display text-xl font-bold text-warm-900">{gameStats.averageDuration} Min</p>
+                  </div>
+                  <div className="rounded-xl bg-warm-50 p-3 text-center ring-1 ring-warm-200/40 dark:bg-warm-800 dark:ring-warm-700">
+                    <p className="text-[11px] font-semibold text-warm-500 uppercase tracking-wider">Häufigstes</p>
+                    <p className="mt-1 font-display text-sm font-bold text-warm-900">{gameStats.mostCommonResult}</p>
+                  </div>
+                  <div className="rounded-xl bg-warm-50 p-3 text-center ring-1 ring-warm-200/40 dark:bg-warm-800 dark:ring-warm-700">
+                    <p className="text-[11px] font-semibold text-warm-500 uppercase tracking-wider">Letztes Spiel</p>
+                    <p className="mt-1 font-display text-sm font-bold text-warm-900">
+                      {gameStats.lastSession
+                        ? new Date(gameStats.lastSession.playedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short" })
+                        : "–"}
+                    </p>
+                    {gameStats.lastSession?.winnerName && (
+                      <p className="text-[10px] text-warm-500 mt-0.5">{gameStats.lastSession.winnerName}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Win Rate Pie Chart */}
+                {gameStats.winRateByPlayer.length > 0 && (
+                  <div className="rounded-2xl border border-warm-200/80 bg-surface p-4 dark:border-warm-700">
+                    <h4 className="text-sm font-semibold text-warm-700 mb-3">Win Rate pro Spieler</h4>
+                    <div className="flex flex-col items-center">
+                      <PieChart
+                        slices={gameStats.winRateByPlayer.map((wr, i) => ({
+                          label: wr.player.name,
+                          value: wr.wins,
+                          color: getPieColors(gameStats.winRateByPlayer.length)[i],
+                        }))}
+                        size={180}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Win Count Bar Chart */}
+                {gameStats.winRateByPlayer.length > 1 && (
+                  <div className="rounded-2xl border border-warm-200/80 bg-surface p-4 dark:border-warm-700">
+                    <h4 className="text-sm font-semibold text-warm-700 mb-3">Siege pro Spieler</h4>
+                    <BarChart
+                      bars={gameStats.winRateByPlayer.map((wr, i) => ({
+                        label: wr.player.name,
+                        value: wr.wins,
+                        color: getPieColors(gameStats.winRateByPlayer.length)[i],
+                      }))}
+                      height={160}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Tags */}
           <div className="mt-8">
             <h3 className="text-xs font-semibold text-warm-500 uppercase tracking-wider">Tags</h3>
@@ -752,10 +825,12 @@ function GameDetailContent() {
           players={players}
           onClose={() => setShowSessionModal(false)}
           onSaved={async (session) => {
-            setSessions((prev) => [session, ...prev]);
+            const newSessions = [session, ...sessions];
+            setSessions(newSessions);
             const updated = await getGameById(game.id);
             if (updated) setGame(updated);
             setShowSessionModal(false);
+            setGameStats(computeGameStats(newSessions, players));
             // Check achievements
             const newAchievements = await checkOnPlaySession(game.lastPlayed, game.mechanics);
             if (newAchievements.length > 0) {

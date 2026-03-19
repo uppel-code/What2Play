@@ -6,6 +6,10 @@ import type { Game, PlaySession, Player } from "@/types/game";
 import { getAllGames, getAllSessions, getAllPlayers } from "@/lib/db-client";
 import { computeYearReview, monthName } from "@/services/year-review";
 import type { YearReviewStats } from "@/services/year-review";
+import { computeGlobalStats } from "@/services/win-loss-stats";
+import type { GlobalStats } from "@/services/win-loss-stats";
+import BarChart from "@/components/BarChart";
+import PieChart, { getPieColors } from "@/components/PieChart";
 
 // ─── Animated Counter ───
 
@@ -133,6 +137,7 @@ async function generateShareImage(stats: YearReviewStats): Promise<Blob | null> 
 
 export default function YearReviewPage() {
   const [stats, setStats] = useState<YearReviewStats | null>(null);
+  const [globalStats, setGlobalStats] = useState<GlobalStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
 
@@ -143,6 +148,7 @@ export default function YearReviewPage() {
       ([games, sessions, players]: [Game[], PlaySession[], Player[]]) => {
         const review = computeYearReview(currentYear, sessions, games, players);
         setStats(review);
+        setGlobalStats(computeGlobalStats(sessions, games, players));
         setLoading(false);
       },
     );
@@ -305,6 +311,72 @@ export default function YearReviewPage() {
           <span className="ml-1 text-sm text-warm-500">Tage am Stück</span>
         </div>
       </StatCard>
+
+      {/* Global Win/Loss Stats */}
+      {globalStats && globalStats.totalSessions > 0 && (
+        <>
+          <div className="mt-2 border-t border-warm-200 pt-4 dark:border-warm-700">
+            <h2 className="font-display text-lg font-bold text-warm-900 mb-3">Globale Statistiken</h2>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard icon="🎮" label="Total Sessions" testId="stat-global-sessions">
+              <AnimatedNumber value={globalStats.totalSessions} />
+            </StatCard>
+            <StatCard icon="🎲" label="Unique Spiele" testId="stat-global-unique">
+              <AnimatedNumber value={globalStats.uniqueGames} />
+            </StatCard>
+          </div>
+
+          {globalStats.bestPlayer && (
+            <StatCard icon="🏅" label="Bester Spieler (meiste Wins)" testId="stat-global-best">
+              <div>
+                <p className="font-display text-2xl font-bold text-warm-900">
+                  {globalStats.bestPlayer.player.name}
+                </p>
+                <p className="text-sm text-warm-500">
+                  <AnimatedNumber value={globalStats.bestPlayer.wins} /> Siege
+                </p>
+              </div>
+            </StatCard>
+          )}
+
+          {globalStats.favoriteGame && (
+            <StatCard icon="❤️" label="Favorite Game (meiste Sessions)" testId="stat-global-fav">
+              <div className="flex items-center gap-3">
+                {globalStats.favoriteGame.game.thumbnail && (
+                  <img
+                    src={globalStats.favoriteGame.game.thumbnail}
+                    alt={globalStats.favoriteGame.game.name}
+                    className="h-14 w-14 rounded-xl object-cover"
+                  />
+                )}
+                <div>
+                  <p className="font-display text-lg font-bold text-warm-900">
+                    {globalStats.favoriteGame.game.name}
+                  </p>
+                  <p className="text-sm text-warm-500">
+                    <AnimatedNumber value={globalStats.favoriteGame.count} /> Sessions
+                  </p>
+                </div>
+              </div>
+            </StatCard>
+          )}
+
+          {globalStats.winStreak && (
+            <StatCard icon="🔥" label="Win Streak" testId="stat-global-streak">
+              <div>
+                <p className="font-display text-2xl font-bold text-warm-900">
+                  {globalStats.winStreak.player.name}
+                </p>
+                <p className="text-sm text-warm-500">
+                  <AnimatedNumber value={globalStats.winStreak.streak} /> Siege am Stück
+                </p>
+              </div>
+            </StatCard>
+          )}
+        </>
+      )}
 
       {/* Share Button */}
       <button

@@ -9,6 +9,7 @@ import { useTheme } from "@/components/ThemeProvider";
 import type { ThemeMode } from "@/services/theme";
 import { createBackup, downloadBackup, readFileAsText, parseBackup, getBackupPreview, type BackupData, type BackupPreview } from "@/services/backup";
 import { Preferences } from "@capacitor/preferences";
+import { getNotificationsEnabled, setNotificationsEnabled } from "@/services/notification-service";
 
 export default function SettingsPage() {
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
@@ -39,6 +40,7 @@ export default function SettingsPage() {
   const [importing, setImporting] = useState(false);
   const [importDone, setImportDone] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [notificationsOn, setNotificationsOn] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export default function SettingsPage() {
       }
       setAiConfigured(await isAiConfigured());
       setGameLang(await getGameLanguage());
+      setNotificationsOn(await getNotificationsEnabled());
     }
     load();
   }, []);
@@ -442,6 +445,54 @@ export default function SettingsPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
             Sprache gespeichert!
+          </div>
+        )}
+      </div>
+
+      {/* Benachrichtigungen */}
+      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${notificationsOn ? "bg-forest-light" : "bg-warm-100"}`}>
+            <svg className={`h-5 w-5 ${notificationsOn ? "text-forest" : "text-warm-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <h2 className="font-display text-lg font-bold text-warm-900">Benachrichtigungen</h2>
+            <p className="text-sm text-warm-500">
+              {notificationsOn
+                ? "Erinnerungen sind aktiv"
+                : "Push-Benachrichtigungen deaktiviert"}
+            </p>
+          </div>
+          <button
+            onClick={async () => {
+              const next = !notificationsOn;
+              setNotificationsOn(next);
+              await setNotificationsEnabled(next);
+            }}
+            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+              notificationsOn ? "bg-forest" : "bg-warm-300"
+            }`}
+            role="switch"
+            aria-checked={notificationsOn}
+            data-testid="notifications-toggle"
+          >
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              notificationsOn ? "translate-x-6" : "translate-x-1"
+            }`} />
+          </button>
+        </div>
+
+        {notificationsOn && (
+          <div className="rounded-xl bg-warm-50 p-4 text-sm text-warm-600 leading-relaxed dark:bg-warm-800 dark:text-warm-400">
+            <p className="font-medium text-warm-700 dark:text-warm-300 mb-1">Du wirst erinnert an:</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              <li>Spiele, die du seit 3 Monaten nicht gespielt hast</li>
+              <li>Spieleabende am nächsten Tag</li>
+              <li>Verliehene Spiele nach 4 Wochen</li>
+              <li>Neue Achievements</li>
+            </ul>
           </div>
         )}
       </div>
