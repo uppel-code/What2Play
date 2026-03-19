@@ -6,13 +6,22 @@ import FilterBar from "@/components/FilterBar";
 import QuickFilters from "@/components/QuickFilters";
 import RandomPicker from "@/components/RandomPicker";
 import type { Game, GameFilters } from "@/types/game";
-import { getAllGames } from "@/lib/db-client";
+import { getAllGames, deleteGame } from "@/lib/db-client";
 import Link from "next/link";
 
 export default function CollectionPage() {
   const [games, setGames] = useState<Game[]>([]);
   const [filters, setFilters] = useState<GameFilters>({});
   const [loading, setLoading] = useState(true);
+
+  const handleDelete = useCallback(async (id: number) => {
+    const game = games.find((g) => g.id === id);
+    if (!game) return;
+    const ok = window.confirm(`"${game.name}" wirklich loschen?`);
+    if (!ok) return;
+    await deleteGame(id);
+    setGames((prev) => prev.filter((g) => g.id !== id));
+  }, [games]);
 
   const loadGames = useCallback(async () => {
     try {
@@ -182,7 +191,7 @@ export default function CollectionPage() {
         <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {filteredGames.map((game, i) => (
             <div key={game.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(i * 40, 400)}ms` }}>
-              <GameCard game={game} />
+              <GameCard game={game} onDelete={handleDelete} />
             </div>
           ))}
         </div>
