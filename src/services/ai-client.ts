@@ -181,7 +181,7 @@ export async function recognizeGamesFromImage(base64Image: string): Promise<Reco
 // ─── Provider Implementations ───
 
 async function callGemini(apiKey: string, base64Image: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [
@@ -352,7 +352,7 @@ Respond ONLY with valid JSON (no markdown):
 }
 
 async function callGeminiText(apiKey: string, prompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
