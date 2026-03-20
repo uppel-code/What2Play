@@ -83,10 +83,12 @@ export default function RegelGuru({ game }: { game: Game }) {
       } else if (msg.startsWith("AI_INVALID_KEY")) {
         setError("Ungültiger API-Key. Bitte prüfe deine Einstellungen.");
       } else if (msg.startsWith("AI_ERROR_400")) {
-        setError("API Fehler. Versuche es nochmal oder prüfe deinen Key.");
+        const detail = msg.replace("AI_ERROR_400: ", "");
+        setError(`API Fehler (400): ${detail}`);
       } else if (msg.startsWith("AI_ERROR_")) {
         const code = msg.match(/AI_ERROR_(\d+)/)?.[1] || "?";
-        setError(`Serverfehler (${code}). Versuche es später.`);
+        const detail = msg.replace(/AI_ERROR_\d+:?\s*/, "");
+        setError(`Serverfehler (${code}): ${detail || "Unbekannt"}`);
       } else {
         setError("Antwort konnte nicht geladen werden. Bitte versuche es erneut.");
       }

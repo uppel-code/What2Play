@@ -512,27 +512,34 @@ Respond ONLY with valid JSON (no markdown):
 async function callGeminiText(apiKey: string, prompt: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
+  const baseConfig = { temperature: 0.7, maxOutputTokens: 2048 };
   const baseBody = {
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 2048, seed: Math.floor(Date.now()) },
+    generationConfig: baseConfig,
   };
 
   // Try with google_search first, fallback without on 400
-  let { status, data } = await aiPost(url, { ...baseBody, tools: [{ google_search: {} }] }, {});
+  // Note: seed is omitted when tools are present — Gemini 2.5 flash rejects seed + google_search combo
+  const bodyWithTools = { ...baseBody, tools: [{ google_search: {} }] };
+  console.log("[AI] callGeminiText request body:", JSON.stringify(bodyWithTools).substring(0, 1000));
+  let { status, data } = await aiPost(url, bodyWithTools, {});
 
   if (status === 400) {
-    console.error("[AI] callGeminiText google_search attempt — Status:", status, "Data:", data.substring(0, 500));
+    const errMsg = parseGeminiError(data);
+    console.error("[AI] callGeminiText google_search attempt — Status:", status, "Error:", errMsg, "Full data:", data.substring(0, 1000));
     console.warn("[AI] google_search failed (400), retrying without tools");
     ({ status, data } = await aiPost(url, baseBody, {}));
     if (status !== 200) {
-      console.error("[AI] callGeminiText retry without tools — Status:", status, "Data:", data.substring(0, 500));
+      console.error("[AI] callGeminiText retry without tools — Status:", status, "Error:", parseGeminiError(data), "Full data:", data.substring(0, 1000));
+    } else {
+      console.log("[AI] callGeminiText fallback without tools succeeded");
     }
   }
 
   if (status === 403) throw new Error("AI_INVALID_KEY");
   if (status === 429) throw new Error("AI_RATE_LIMIT");
   if (status === 400) throw new Error(`AI_ERROR_400: ${parseGeminiError(data)}`);
-  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+  if (status !== 200) throw new Error(`AI_ERROR_${status}: ${parseGeminiError(data)}`);
 
   try {
     const parsed = JSON.parse(data);
@@ -781,27 +788,34 @@ async function callGeminiChat(apiKey: string, systemPrompt: string, history: Rul
     { role: "user", parts: [{ text: question }] },
   ];
 
+  const baseConfig = { temperature: 0.7, maxOutputTokens: 1024 };
   const baseBody = {
     contents,
-    generationConfig: { temperature: 0.7, maxOutputTokens: 1024, seed: Math.floor(Date.now()) },
+    generationConfig: baseConfig,
   };
 
   // Try with google_search first, fallback without on 400
-  let { status, data } = await aiPost(url, { ...baseBody, tools: [{ google_search: {} }] }, {});
+  // Note: seed is omitted when tools are present — Gemini 2.5 flash rejects seed + google_search combo
+  const bodyWithTools = { ...baseBody, tools: [{ google_search: {} }] };
+  console.log("[AI] callGeminiChat request body:", JSON.stringify(bodyWithTools).substring(0, 1000));
+  let { status, data } = await aiPost(url, bodyWithTools, {});
 
   if (status === 400) {
-    console.error("[AI] callGeminiChat google_search attempt — Status:", status, "Data:", data.substring(0, 500));
+    const errMsg = parseGeminiError(data);
+    console.error("[AI] callGeminiChat google_search attempt — Status:", status, "Error:", errMsg, "Full data:", data.substring(0, 1000));
     console.warn("[AI] google_search failed in chat (400), retrying without tools");
     ({ status, data } = await aiPost(url, baseBody, {}));
     if (status !== 200) {
-      console.error("[AI] callGeminiChat retry without tools — Status:", status, "Data:", data.substring(0, 500));
+      console.error("[AI] callGeminiChat retry without tools — Status:", status, "Error:", parseGeminiError(data), "Full data:", data.substring(0, 1000));
+    } else {
+      console.log("[AI] callGeminiChat fallback without tools succeeded");
     }
   }
 
   if (status === 403) throw new Error("AI_INVALID_KEY");
   if (status === 429) throw new Error("AI_RATE_LIMIT");
   if (status === 400) throw new Error(`AI_ERROR_400: ${parseGeminiError(data)}`);
-  if (status !== 200) throw new Error(`AI_ERROR_${status}`);
+  if (status !== 200) throw new Error(`AI_ERROR_${status}: ${parseGeminiError(data)}`);
 
   try {
     const parsed = JSON.parse(data);
