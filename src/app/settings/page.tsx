@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { getBggToken, setBggToken, isBggConfigured } from "@/services/bgg-client";
-import { getAiConfig, setAiConfig, clearAiConfig, isAiConfigured, getGameLanguage, setGameLanguage } from "@/services/ai-client";
-import type { AiProvider, GameLanguage } from "@/services/ai-client";
+import { getAiConfig, setAiConfig, clearAiConfig, isAiConfigured, getGameLanguage, setGameLanguage, testAiConnection, getUseNativeHttp, setUseNativeHttp } from "@/services/ai-client";
+import type { AiProvider, GameLanguage, AiTestResult } from "@/services/ai-client";
 import { getGameCount, getAllGamesRaw, getAllPlayersRaw, getAllPlayGroupsRaw, getAllSessionsRaw, getAllLoansRaw, clearAllData, bulkImportData } from "@/lib/db-client";
 import { useTheme } from "@/components/ThemeProvider";
 import type { ThemeMode } from "@/services/theme";
@@ -25,6 +25,11 @@ export default function SettingsPage() {
   const [aiConfigured, setAiConfigured] = useState(false);
   const [aiSaving, setAiSaving] = useState(false);
   const [aiSaved, setAiSaved] = useState(false);
+
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<AiTestResult | null>(null);
+  const [aiTestError, setAiTestError] = useState<string | null>(null);
+  const [useNativeHttp, setUseNativeHttpState] = useState(false);
 
   const [gameCount, setGameCount] = useState<number>(0);
 
@@ -58,6 +63,7 @@ export default function SettingsPage() {
         setSavedAiKey(ac.apiKey);
       }
       setAiConfigured(await isAiConfigured());
+      setUseNativeHttpState(await getUseNativeHttp());
       setGameLang(await getGameLanguage());
       setNotificationsOn(await getNotificationsEnabled());
     }
@@ -104,6 +110,26 @@ export default function SettingsPage() {
     setAiKey("");
     setSavedAiKey(null);
     setAiConfigured(false);
+  }
+
+  async function handleTestAi() {
+    setAiTesting(true);
+    setAiTestResult(null);
+    setAiTestError(null);
+    try {
+      const result = await testAiConnection();
+      setAiTestResult(result);
+    } catch (err) {
+      setAiTestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAiTesting(false);
+    }
+  }
+
+  async function handleNativeHttpToggle() {
+    const next = !useNativeHttp;
+    setUseNativeHttpState(next);
+    await setUseNativeHttp(next);
   }
 
   const providerLabels: Record<AiProvider, string> = {
@@ -382,13 +408,67 @@ export default function SettingsPage() {
           )}
 
           {savedAiKey && !aiSaved && (
-            <button
-              onClick={handleClearAiConfig}
-              className="text-sm text-coral hover:text-coral-dark font-medium transition-colors"
-            >
-              AI-Konfiguration entfernen
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleClearAiConfig}
+                className="text-sm text-coral hover:text-coral-dark font-medium transition-colors"
+              >
+                AI-Konfiguration entfernen
+              </button>
+              <button
+                onClick={handleTestAi}
+                disabled={aiTesting || !aiConfigured}
+                className="rounded-xl border border-forest px-4 py-2 text-sm font-semibold text-forest transition-all hover:bg-forest-light disabled:opacity-50 active:scale-[0.98]"
+              >
+                {aiTesting ? "Teste..." : "API-Key testen"}
+              </button>
+            </div>
           )}
+
+          {/* API Test Result */}
+          {aiTestResult && (
+            <div className={`rounded-xl p-4 text-sm ${aiTestResult.success ? "bg-forest-light" : "bg-coral/10"}`}>
+              <div className={`font-semibold mb-2 ${aiTestResult.success ? "text-forest" : "text-coral"}`}>
+                {aiTestResult.success ? "API funktioniert!" : `Fehler (Status ${aiTestResult.status})`}
+              </div>
+              <div className="text-xs text-warm-500 mb-1">Methode: {aiTestResult.method}</div>
+              <pre className="text-xs text-warm-700 whitespace-pre-wrap break-all max-h-48 overflow-y-auto bg-warm-50 rounded-lg p-3 border border-warm-200">
+                {aiTestResult.responseText}
+              </pre>
+            </div>
+          )}
+
+          {/* API Test Error */}
+          {aiTestError && (
+            <div className="rounded-xl bg-coral/10 p-4 text-sm">
+              <div className="font-semibold text-coral mb-2">Test fehlgeschlagen</div>
+              <pre className="text-xs text-warm-700 whitespace-pre-wrap break-all bg-warm-50 rounded-lg p-3 border border-warm-200">
+                {aiTestError}
+              </pre>
+            </div>
+          )}
+
+          {/* Native HTTP Toggle */}
+          <div className="flex items-center justify-between rounded-xl bg-warm-50 p-4">
+            <div>
+              <div className="text-sm font-medium text-warm-700">Nativen HTTP-Client nutzen</div>
+              <div className="text-xs text-warm-500 mt-0.5">
+                Standard: fetch() (funktioniert überall). Native: CapacitorHttp (umgeht CORS).
+              </div>
+            </div>
+            <button
+              onClick={handleNativeHttpToggle}
+              className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                useNativeHttp ? "bg-forest" : "bg-warm-300"
+              }`}
+              role="switch"
+              aria-checked={useNativeHttp}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                useNativeHttp ? "translate-x-6" : "translate-x-1"
+              }`} />
+            </button>
+          </div>
         </div>
       </div>
 

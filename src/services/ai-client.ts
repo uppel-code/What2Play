@@ -17,6 +17,7 @@ export type GameLanguage = "de" | "en";
 const AI_PROVIDER_KEY = "ai_provider";
 const AI_API_KEY_KEY = "ai_api_key";
 const GAME_LANGUAGE_KEY = "game_language";
+const USE_NATIVE_HTTP_KEY = "use_native_http";
 
 export interface AiConfig {
   provider: AiProvider;
@@ -57,6 +58,103 @@ export async function getGameLanguage(): Promise<GameLanguage> {
 
 export async function setGameLanguage(language: GameLanguage): Promise<void> {
   await Preferences.set({ key: GAME_LANGUAGE_KEY, value: language });
+}
+
+// ─── Native HTTP Setting ───
+
+export async function getUseNativeHttp(): Promise<boolean> {
+  const { value } = await Preferences.get({ key: USE_NATIVE_HTTP_KEY });
+  return value === "true";
+}
+
+export async function setUseNativeHttp(enabled: boolean): Promise<void> {
+  await Preferences.set({ key: USE_NATIVE_HTTP_KEY, value: String(enabled) });
+}
+
+// ─── API Connection Test ───
+
+export interface AiTestResult {
+  success: boolean;
+  status: number;
+  responseText: string;
+  method: "fetch" | "capacitor-http" | "capacitor-http-fallback";
+}
+
+export async function testAiConnection(): Promise<AiTestResult> {
+  const config = await getAiConfig();
+  if (!config) throw new Error("AI_NOT_CONFIGURED");
+
+  const useNative = await getUseNativeHttp();
+  let method: AiTestResult["method"] = "fetch";
+
+  let url: string;
+  let body: unknown;
+  let headers: Record<string, string> = {};
+
+  switch (config.provider) {
+    case "gemini": {
+      url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.apiKey}`;
+      body = {
+        contents: [{ parts: [{ text: "Sag hallo" }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 50 },
+      };
+      break;
+    }
+    case "openai": {
+      url = "https://api.openai.com/v1/chat/completions";
+      body = {
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "Sag hallo" }],
+        max_tokens: 50,
+      };
+      headers = { Authorization: `Bearer ${config.apiKey}` };
+      break;
+    }
+    case "claude": {
+      url = "https://api.anthropic.com/v1/messages";
+      body = {
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 50,
+        messages: [{ role: "user", content: "Sag hallo" }],
+      };
+      headers = {
+        "x-api-key": config.apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      };
+      break;
+    }
+    default:
+      throw new Error("UNKNOWN_PROVIDER");
+  }
+
+  let status: number;
+  let data: string;
+
+  if (useNative && Capacitor.isNativePlatform()) {
+    method = "capacitor-http";
+    ({ status, data } = await capacitorPost(url, body, headers));
+  } else {
+    try {
+      ({ status, data } = await fetchPost(url, body, headers));
+    } catch (err) {
+      if (Capacitor.isNativePlatform()) {
+        method = "capacitor-http-fallback";
+        ({ status, data } = await capacitorPost(url, body, headers));
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  console.log("[AI] Test result — Method:", method, "Status:", status, "Data:", data.substring(0, 500));
+
+  return {
+    success: status === 200,
+    status,
+    responseText: data.substring(0, 1000),
+    method,
+  };
 }
 
 // ─── Image Compression ───
@@ -120,26 +218,60 @@ function parseGeminiError(data: string): string {
 
 // ─── HTTP Helper ───
 
-async function aiPost(url: string, body: unknown, headers: Record<string, string>): Promise<{ status: number; data: string }> {
-  if (Capacitor.isNativePlatform()) {
-    const response = await CapacitorHttp.request({
-      url,
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      data: body,
-    });
-    return {
-      status: response.status,
-      data: typeof response.data === "string" ? response.data : JSON.stringify(response.data),
-    };
-  }
-
+async function fetchPost(url: string, body: unknown, headers: Record<string, string>): Promise<{ status: number; data: string }> {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
   return { status: response.status, data: await response.text() };
+}
+
+async function capacitorPost(url: string, body: unknown, headers: Record<string, string>): Promise<{ status: number; data: string }> {
+  const response = await CapacitorHttp.request({
+    url,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    data: body,
+  });
+  return {
+    status: response.status,
+    data: typeof response.data === "string" ? response.data : JSON.stringify(response.data),
+  };
+}
+
+async function aiPost(url: string, body: unknown, headers: Record<string, string>): Promise<{ status: number; data: string }> {
+  const useNative = await getUseNativeHttp();
+
+  if (useNative && Capacitor.isNativePlatform()) {
+    console.log("[AI] Using CapacitorHttp (native)");
+    const result = await capacitorPost(url, body, headers);
+    if (result.status !== 200) {
+      console.error("[AI] CapacitorHttp error — Status:", result.status, "Data:", result.data.substring(0, 500));
+    }
+    return result;
+  }
+
+  // Default: use fetch() — works everywhere
+  try {
+    console.log("[AI] Using fetch()");
+    const result = await fetchPost(url, body, headers);
+    if (result.status !== 200) {
+      console.error("[AI] fetch() error — Status:", result.status, "Data:", result.data.substring(0, 500));
+    }
+    return result;
+  } catch (err) {
+    // CORS error or network failure on native — fallback to CapacitorHttp
+    if (Capacitor.isNativePlatform()) {
+      console.warn("[AI] fetch() failed, falling back to CapacitorHttp:", err);
+      const result = await capacitorPost(url, body, headers);
+      if (result.status !== 200) {
+        console.error("[AI] CapacitorHttp fallback error — Status:", result.status, "Data:", result.data.substring(0, 500));
+      }
+      return result;
+    }
+    throw err;
+  }
 }
 
 // ─── Game Recognition ───
@@ -389,8 +521,12 @@ async function callGeminiText(apiKey: string, prompt: string): Promise<string> {
   let { status, data } = await aiPost(url, { ...baseBody, tools: [{ google_search: {} }] }, {});
 
   if (status === 400) {
-    console.warn("[AI] google_search failed (400), retrying without tools:", parseGeminiError(data));
+    console.error("[AI] callGeminiText google_search attempt — Status:", status, "Data:", data.substring(0, 500));
+    console.warn("[AI] google_search failed (400), retrying without tools");
     ({ status, data } = await aiPost(url, baseBody, {}));
+    if (status !== 200) {
+      console.error("[AI] callGeminiText retry without tools — Status:", status, "Data:", data.substring(0, 500));
+    }
   }
 
   if (status === 403) throw new Error("AI_INVALID_KEY");
@@ -654,8 +790,12 @@ async function callGeminiChat(apiKey: string, systemPrompt: string, history: Rul
   let { status, data } = await aiPost(url, { ...baseBody, tools: [{ google_search: {} }] }, {});
 
   if (status === 400) {
-    console.warn("[AI] google_search failed in chat (400), retrying without tools:", parseGeminiError(data));
+    console.error("[AI] callGeminiChat google_search attempt — Status:", status, "Data:", data.substring(0, 500));
+    console.warn("[AI] google_search failed in chat (400), retrying without tools");
     ({ status, data } = await aiPost(url, baseBody, {}));
+    if (status !== 200) {
+      console.error("[AI] callGeminiChat retry without tools — Status:", status, "Data:", data.substring(0, 500));
+    }
   }
 
   if (status === 403) throw new Error("AI_INVALID_KEY");
