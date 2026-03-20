@@ -166,11 +166,11 @@ export default function LeaderboardPage() {
         </div>
 
         {/* Leaderboard Table */}
-        {sorted.length === 0 ? (
+        {sorted.length === 0 || sessions.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-4xl mb-3">🏆</p>
             <p className="text-sm text-warm-500">
-              {leaderboard.length === 0
+              {sessions.length === 0
                 ? "Noch keine Spiele gespielt. Starte eine Partie!"
                 : "Kein Spieler gefunden."}
             </p>

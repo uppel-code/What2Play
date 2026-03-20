@@ -28,6 +28,9 @@ function PlayerDetailContent() {
           setStats(computePlayerDetailStats(player, sessions, games, players));
         }
       })
+      .catch(() => {
+        // Player data load failed — stats stays null, 404 UI shown
+      })
       .finally(() => setLoading(false));
   }, [id]);
 

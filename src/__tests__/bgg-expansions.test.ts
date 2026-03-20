@@ -128,9 +128,9 @@ describe("searchExpansionsByName", () => {
     const results = await searchExpansionsByName("Catan");
     expect(results).toHaveLength(1);
     expect(results[0].name).toBe("Catan: Seafarers");
-    // Verify the search query included "expansion" (URL-encoded with %20)
+    // Verify the search query used boardgameexpansion type
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      expect.stringContaining("Catan%20expansion"),
+      expect.stringContaining("type=boardgameexpansion"),
       expect.any(Object),
     );
   });

@@ -135,8 +135,11 @@ export function createAchievementNotification(
 
 // ─── Schedule via Capacitor ───
 
+let isScheduling = false;
+
 export async function scheduleNotifications(notifications: PendingNotification[]): Promise<void> {
-  if (notifications.length === 0) return;
+  if (isScheduling || notifications.length === 0) return;
+  isScheduling = true;
 
   try {
     const { LocalNotifications } = await import("@capacitor/local-notifications");
@@ -164,6 +167,8 @@ export async function scheduleNotifications(notifications: PendingNotification[]
     });
   } catch {
     // Capacitor not available (web/test environment) — silently ignore
+  } finally {
+    isScheduling = false;
   }
 }
 

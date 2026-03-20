@@ -128,7 +128,7 @@ export default function ManageCollectionPage() {
           </div>
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as "name" | "date")}
+            onChange={(e) => { setSortBy(e.target.value as "name" | "date"); setPage(0); }}
             className="rounded-xl border border-warm-200 bg-surface px-3 py-2 text-sm text-warm-700 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/10"
           >
             <option value="name">A–Z</option>
