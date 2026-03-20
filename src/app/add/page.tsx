@@ -9,6 +9,8 @@ import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch
 import type { RecognizedGame, VerificationResult } from "@/services/ai-client";
 import { checkOnGameAdd, checkOnPhotoScan } from "@/services/achievements";
 import AchievementToast from "@/components/AchievementToast";
+import { Capacitor } from "@capacitor/core";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
 type ActiveTab = "bgg-search" | "bgg-collection" | "bgg-bulk" | "photo-scan" | "barcode-scan" | "manual";
 
@@ -1578,7 +1580,7 @@ interface DetectedBarcode {
 }
 
 interface BarcodeDetectorInstance {
-  detect(source: HTMLVideoElement | HTMLCanvasElement | ImageBitmap): Promise<DetectedBarcode[]>;
+  detect(source: HTMLVideoElement | HTMLCanvasElement | HTMLImageElement | ImageBitmap): Promise<DetectedBarcode[]>;
 }
 
 interface BarcodeDetectorConstructor {
@@ -1603,11 +1605,13 @@ interface ScannedGame {
 function LiveScannerTab() {
   const router = useRouter();
   const [scanning, setScanning] = useState(false);
+  const [scanMode, setScanMode] = useState<"stream" | "camera-loop" | null>(null);
   const [scannedGames, setScannedGames] = useState<ScannedGame[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [achievementQueue, setAchievementQueue] = useState<AchievementKey[]>([]);
+  const [cameraLoopActive, setCameraLoopActive] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -1617,6 +1621,7 @@ function LiveScannerTab() {
   const lastScanTimeRef = useRef(0);
   const animFrameRef = useRef<number>(0);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const cameraLoopRef = useRef(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1628,6 +1633,7 @@ function LiveScannerTab() {
 
   function stopCamera() {
     scanningRef.current = false;
+    cameraLoopRef.current = false;
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = 0;
@@ -1637,6 +1643,8 @@ function LiveScannerTab() {
       streamRef.current = null;
     }
     setScanning(false);
+    setScanMode(null);
+    setCameraLoopActive(false);
   }
 
   async function startCamera() {
@@ -1657,6 +1665,7 @@ function LiveScannerTab() {
       return;
     }
 
+    // Try getUserMedia first (works in browser, may fail in Capacitor WebView)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -1670,15 +1679,88 @@ function LiveScannerTab() {
 
       scanningRef.current = true;
       setScanning(true);
+      setScanMode("stream");
       scanLoop();
-    } catch (err) {
-      const msg = err instanceof Error ? err.name : "";
-      if (msg === "NotAllowedError") {
-        setCameraError("Kamera-Zugriff verweigert. Bitte erlaube den Kamera-Zugriff in den Browser-Einstellungen.");
-      } else if (msg === "NotFoundError") {
-        setCameraError("Keine Kamera gefunden. Nutze den Foto-Fallback unten.");
+    } catch {
+      // getUserMedia failed — fall back to Capacitor Camera loop on native
+      if (Capacitor.isNativePlatform()) {
+        setScanning(true);
+        setScanMode("camera-loop");
+        startCameraLoop();
       } else {
         setCameraError("Kamera konnte nicht gestartet werden. Nutze den Foto-Fallback unten.");
+      }
+    }
+  }
+
+  // ─── Camera Loop Mode (Capacitor native) ───
+
+  async function startCameraLoop() {
+    cameraLoopRef.current = true;
+    setCameraLoopActive(true);
+    await runCameraLoopIteration();
+  }
+
+  async function runCameraLoopIteration() {
+    if (!cameraLoopRef.current) return;
+
+    try {
+      const photo = await Camera.getPhoto({
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Camera,
+        quality: 80,
+        width: 1280,
+      });
+
+      if (!cameraLoopRef.current) return;
+
+      if (photo.base64String && detectorRef.current) {
+        // Create an image from the photo to run BarcodeDetector on it
+        const img = new Image();
+        img.src = `data:image/${photo.format || "jpeg"};base64,${photo.base64String}`;
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("Image load failed"));
+        });
+
+        const barcodes = await detectorRef.current.detect(img as unknown as ImageBitmap);
+        let found = false;
+        for (const bc of barcodes) {
+          const ean = bc.rawValue.trim();
+          if (ean && !scannedEansRef.current.has(ean)) {
+            scannedEansRef.current.add(ean);
+            playBeep();
+            triggerHaptic();
+            handleEanDetected(ean);
+            found = true;
+          }
+        }
+
+        // If BarcodeDetector found nothing, try AI fallback
+        if (!found && barcodes.length === 0) {
+          try {
+            const result = await recognizeBarcodeFromImage(photo.base64String);
+            if (result.barcode && !scannedEansRef.current.has(result.barcode)) {
+              scannedEansRef.current.add(result.barcode);
+              playBeep();
+              triggerHaptic();
+              handleEanDetected(result.barcode);
+            }
+          } catch {
+            // AI fallback failed, continue loop
+          }
+        }
+      }
+
+      // Continue loop — next photo
+      if (cameraLoopRef.current) {
+        // Small delay before next capture
+        setTimeout(() => runCameraLoopIteration(), 300);
+      }
+    } catch {
+      // User cancelled camera or error — stop loop
+      if (cameraLoopRef.current) {
+        stopCamera();
       }
     }
   }
@@ -1946,7 +2028,7 @@ function LiveScannerTab() {
               </button>
             </div>
           </div>
-        ) : (
+        ) : scanMode === "stream" ? (
           <div className="relative">
             {/* Video stream */}
             <video
@@ -1983,6 +2065,32 @@ function LiveScannerTab() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          </div>
+        ) : (
+          /* Camera loop mode (Capacitor native) */
+          <div className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="h-3 w-3 rounded-full bg-forest animate-pulse" />
+                <p className="text-sm font-medium text-warm-700">
+                  Kamera-Scan aktiv
+                </p>
+              </div>
+              <button
+                onClick={stopCamera}
+                className="rounded-lg bg-coral/10 px-3 py-1.5 text-sm font-medium text-coral transition-colors hover:bg-coral/20"
+              >
+                Stoppen
+              </button>
+            </div>
+            <p className="text-xs text-warm-500">
+              Die Kamera öffnet sich automatisch. Fotografiere den Barcode — nach dem Foto wird sofort der nächste Scan gestartet.
+            </p>
+            {scannedGames.length > 0 && (
+              <p className="mt-2 text-xs font-medium text-forest">
+                {scannedGames.length} Spiel{scannedGames.length !== 1 ? "e" : ""} gescannt
+              </p>
+            )}
           </div>
         )}
       </div>
