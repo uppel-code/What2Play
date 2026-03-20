@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 // ─── EAN Lookup Response Parser Tests ───
 
@@ -66,38 +66,58 @@ describe("Multi-Scan Duplicate Detection", () => {
   });
 });
 
-// ─── BarcodeDetector Mock Tests ───
+// ─── Barcode Decode Result Tests ───
 
-describe("BarcodeDetector Integration", () => {
-  it("BarcodeDetector mock returns detected barcodes", async () => {
-    const mockDetector = {
-      detect: vi.fn().mockResolvedValue([
-        { rawValue: "4002051694968", format: "ean_13" },
-        { rawValue: "4005556269372", format: "ean_13" },
-      ]),
-    };
+describe("Barcode Decode Result Handling", () => {
+  it("filters valid results from zxing-wasm output", () => {
+    const mockResults = [
+      { isValid: true, text: "4002051694968", format: "EAN-13" },
+      { isValid: false, text: "", format: "" },
+      { isValid: true, text: "4005556269372", format: "EAN-13" },
+    ];
 
-    const barcodes = await mockDetector.detect({} as HTMLVideoElement);
-    expect(barcodes).toHaveLength(2);
-    expect(barcodes[0].rawValue).toBe("4002051694968");
-    expect(barcodes[1].format).toBe("ean_13");
+    const valid = mockResults.filter((r) => r.isValid && r.text.trim());
+    expect(valid).toHaveLength(2);
+    expect(valid[0].text).toBe("4002051694968");
+    expect(valid[1].text).toBe("4005556269372");
   });
 
-  it("BarcodeDetector mock handles no barcodes", async () => {
-    const mockDetector = {
-      detect: vi.fn().mockResolvedValue([]),
-    };
+  it("returns first valid barcode", () => {
+    const mockResults = [
+      { isValid: true, text: "4002051694968", format: "EAN-13" },
+      { isValid: true, text: "4005556269372", format: "EAN-13" },
+    ];
 
-    const barcodes = await mockDetector.detect({} as HTMLVideoElement);
-    expect(barcodes).toHaveLength(0);
+    const valid = mockResults.filter((r) => r.isValid && r.text.trim());
+    const ean = valid.length > 0 ? valid[0].text.trim() : null;
+    expect(ean).toBe("4002051694968");
   });
 
-  it("BarcodeDetector mock handles detection error", async () => {
-    const mockDetector = {
-      detect: vi.fn().mockRejectedValue(new Error("Detection failed")),
-    };
+  it("returns null when no valid barcodes found", () => {
+    const mockResults = [
+      { isValid: false, text: "", format: "" },
+    ];
 
-    await expect(mockDetector.detect({} as HTMLVideoElement)).rejects.toThrow("Detection failed");
+    const valid = mockResults.filter((r) => r.isValid && r.text.trim());
+    const ean = valid.length > 0 ? valid[0].text.trim() : null;
+    expect(ean).toBeNull();
+  });
+
+  it("handles empty results array", () => {
+    const mockResults: { isValid: boolean; text: string; format: string }[] = [];
+    const valid = mockResults.filter((r) => r.isValid && r.text.trim());
+    const ean = valid.length > 0 ? valid[0].text.trim() : null;
+    expect(ean).toBeNull();
+  });
+
+  it("trims whitespace from barcode text", () => {
+    const mockResults = [
+      { isValid: true, text: "  4002051694968  ", format: "EAN-13" },
+    ];
+
+    const valid = mockResults.filter((r) => r.isValid && r.text.trim());
+    const ean = valid.length > 0 ? valid[0].text.trim() : null;
+    expect(ean).toBe("4002051694968");
   });
 });
 
