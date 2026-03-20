@@ -195,7 +195,14 @@ function GameDetailContent() {
       if (msg === "AI_NOT_CONFIGURED") {
         setQuickRulesError("AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
       } else if (msg === "AI_RATE_LIMIT") {
-        setQuickRulesError("Zu viele Anfragen. Bitte versuche es in einer Minute erneut.");
+        setQuickRulesError("Zu viele Anfragen. Warte kurz und versuche es nochmal.");
+      } else if (msg.startsWith("AI_INVALID_KEY")) {
+        setQuickRulesError("Ungültiger API-Key. Bitte prüfe deine Einstellungen.");
+      } else if (msg.startsWith("AI_ERROR_400")) {
+        setQuickRulesError("API Fehler. Versuche es nochmal oder prüfe deinen Key.");
+      } else if (msg.startsWith("AI_ERROR_")) {
+        const code = msg.match(/AI_ERROR_(\d+)/)?.[1] || "?";
+        setQuickRulesError(`Serverfehler (${code}). Versuche es später.`);
       } else {
         setQuickRulesError("Regeln konnten nicht geladen werden. Bitte versuche es erneut.");
       }
@@ -228,7 +235,14 @@ function GameDetailContent() {
       if (msg === "AI_NOT_CONFIGURED") {
         setSaleError("AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
       } else if (msg === "AI_RATE_LIMIT") {
-        setSaleError("Zu viele Anfragen. Bitte versuche es in einer Minute erneut.");
+        setSaleError("Zu viele Anfragen. Warte kurz und versuche es nochmal.");
+      } else if (msg.startsWith("AI_INVALID_KEY")) {
+        setSaleError("Ungültiger API-Key. Bitte prüfe deine Einstellungen.");
+      } else if (msg.startsWith("AI_ERROR_400")) {
+        setSaleError("API Fehler. Versuche es nochmal oder prüfe deinen Key.");
+      } else if (msg.startsWith("AI_ERROR_")) {
+        const code = msg.match(/AI_ERROR_(\d+)/)?.[1] || "?";
+        setSaleError(`Serverfehler (${code}). Versuche es später.`);
       } else {
         setSaleError("Verkaufstext konnte nicht generiert werden. Bitte versuche es erneut.");
       }

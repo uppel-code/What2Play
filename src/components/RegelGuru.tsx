@@ -79,9 +79,14 @@ export default function RegelGuru({ game }: { game: Game }) {
       if (msg === "AI_NOT_CONFIGURED") {
         setError("AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
       } else if (msg === "AI_RATE_LIMIT") {
-        setError("Zu viele Anfragen. Bitte versuche es in einer Minute erneut.");
+        setError("Zu viele Anfragen. Warte kurz und versuche es nochmal.");
       } else if (msg.startsWith("AI_INVALID_KEY")) {
         setError("Ungültiger API-Key. Bitte prüfe deine Einstellungen.");
+      } else if (msg.startsWith("AI_ERROR_400")) {
+        setError("API Fehler. Versuche es nochmal oder prüfe deinen Key.");
+      } else if (msg.startsWith("AI_ERROR_")) {
+        const code = msg.match(/AI_ERROR_(\d+)/)?.[1] || "?";
+        setError(`Serverfehler (${code}). Versuche es später.`);
       } else {
         setError("Antwort konnte nicht geladen werden. Bitte versuche es erneut.");
       }

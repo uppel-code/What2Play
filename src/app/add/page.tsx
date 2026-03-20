@@ -1047,10 +1047,15 @@ function PhotoScanTab() {
       if (err instanceof Error) {
         if (err.message === "AI_NOT_CONFIGURED") {
           setAiReady(false);
-        } else if (err.message === "AI_INVALID_KEY") {
-          setError("Der AI API-Key ist ungültig. Bitte prüfe ihn in den Einstellungen.");
+        } else if (err.message.startsWith("AI_INVALID_KEY")) {
+          setError("Ungültiger API-Key. Bitte prüfe deine Einstellungen.");
         } else if (err.message === "AI_RATE_LIMIT") {
-          setError("AI Rate-Limit erreicht. Bitte warte einen Moment und versuche es erneut.");
+          setError("Zu viele Anfragen. Warte kurz und versuche es nochmal.");
+        } else if (err.message.startsWith("AI_ERROR_400")) {
+          setError("API Fehler. Versuche es nochmal oder prüfe deinen Key.");
+        } else if (err.message.startsWith("AI_ERROR_")) {
+          const code = err.message.match(/AI_ERROR_(\d+)/)?.[1] || "?";
+          setError(`Serverfehler (${code}). Versuche es später.`);
         } else {
           setError(`Analyse fehlgeschlagen: ${err.message}`);
         }
