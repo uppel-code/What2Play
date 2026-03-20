@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { BggGameData, BggSearchResult, AchievementKey } from "@/types/game";
 import { createGame, getGameByBggId } from "@/lib/db-client";
 import { searchBgg as bggSearch, fetchBggThing, fetchBggCollection, isBggConfigured } from "@/services/bgg-client";
-import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch, getGameLanguage, recognizeBarcodeFromImage } from "@/services/ai-client";
+import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch, getGameLanguage, recognizeBarcodeFromImage, lookupGameByEan } from "@/services/ai-client";
 import type { RecognizedGame, VerificationResult } from "@/services/ai-client";
 import { checkOnGameAdd, checkOnPhotoScan } from "@/services/achievements";
 import AchievementToast from "@/components/AchievementToast";
@@ -36,7 +36,7 @@ export default function AddGamePage() {
           IDs
         </TabButton>
         <TabButton active={activeTab === "barcode-scan"} onClick={() => setActiveTab("barcode-scan")}>
-          Barcode
+          Scanner
         </TabButton>
         <TabButton active={activeTab === "manual"} onClick={() => setActiveTab("manual")}>
           Manuell
@@ -45,7 +45,7 @@ export default function AddGamePage() {
 
       {activeTab === "bgg-search" && <BggSearchTab router={router} />}
       {activeTab === "photo-scan" && <PhotoScanTab />}
-      {activeTab === "barcode-scan" && <BarcodeScanTab />}
+      {activeTab === "barcode-scan" && <LiveScannerTab />}
       {activeTab === "bgg-collection" && <BggCollectionTab router={router} />}
       {activeTab === "bgg-bulk" && <BggBulkTab />}
       {activeTab === "manual" && <ManualTab router={router} />}
@@ -1538,211 +1538,566 @@ function PhotoScanTab() {
 
 // ─── Barcode Scan Tab ───
 
-function BarcodeScanTab() {
+// ─── Beep Sound (Web Audio API) ───
+
+function playBeep() {
+  try {
+    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 1200;
+    osc.type = "sine";
+    gain.gain.value = 0.3;
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+    osc.stop(ctx.currentTime + 0.15);
+  } catch {
+    // Audio not available
+  }
+}
+
+// ─── Haptic Feedback ───
+
+async function triggerHaptic() {
+  try {
+    if ("vibrate" in navigator) {
+      navigator.vibrate(50);
+    }
+  } catch {
+    // Haptics not available
+  }
+}
+
+// ─── BarcodeDetector type declaration ───
+
+interface DetectedBarcode {
+  rawValue: string;
+  format: string;
+}
+
+interface BarcodeDetectorInstance {
+  detect(source: HTMLVideoElement | HTMLCanvasElement | ImageBitmap): Promise<DetectedBarcode[]>;
+}
+
+interface BarcodeDetectorConstructor {
+  new (options: { formats: string[] }): BarcodeDetectorInstance;
+  getSupportedFormats(): Promise<string[]>;
+}
+
+// ─── Scanned Game Item ───
+
+interface ScannedGame {
+  ean: string;
+  name: string;
+  bggId: number | null;
+  thumbnail: string | null;
+  status: "searching" | "found" | "not_found" | "duplicate" | "added";
+  bggData: BggGameData | null;
+  target: "collection" | "wishlist";
+}
+
+// ─── Live Scanner Tab ───
+
+function LiveScannerTab() {
   const router = useRouter();
-  const [aiReady, setAiReady] = useState<boolean | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [gameName, setGameName] = useState<string | null>(null);
-  const [barcode, setBarcode] = useState<string | null>(null);
-  const [confidence, setConfidence] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<BggSearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scannedGames, setScannedGames] = useState<ScannedGame[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [achievementQueue, setAchievementQueue] = useState<AchievementKey[]>([]);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const detectorRef = useRef<BarcodeDetectorInstance | null>(null);
+  const scanningRef = useRef(false);
+  const scannedEansRef = useRef<Set<string>>(new Set());
+  const lastScanTimeRef = useRef(0);
+  const animFrameRef = useRef<number>(0);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
+  // Cleanup on unmount
   useEffect(() => {
-    isAiConfigured().then(setAiReady).catch(() => setAiReady(false));
+    return () => {
+      stopCamera();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleFile(file: File) {
+  function stopCamera() {
+    scanningRef.current = false;
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = 0;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setScanning(false);
+  }
+
+  async function startCamera() {
     setError(null);
-    setGameName(null);
-    setBarcode(null);
-    setSearchResults([]);
+    setCameraError(null);
 
-    // Preview
-    const reader = new FileReader();
-    reader.onload = (e) => setImagePreview(e.target?.result as string);
-    reader.readAsDataURL(file);
+    // Check BarcodeDetector support
+    const BarcodeDetectorAPI = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+    if (!BarcodeDetectorAPI) {
+      setCameraError("BarcodeDetector API nicht verfügbar. Nutze den Foto-Fallback unten.");
+      return;
+    }
 
-    // Analyze
-    setAnalyzing(true);
+    try {
+      detectorRef.current = new BarcodeDetectorAPI({ formats: ["ean_13", "ean_8", "upc_a"] });
+    } catch {
+      setCameraError("BarcodeDetector konnte nicht initialisiert werden.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      scanningRef.current = true;
+      setScanning(true);
+      scanLoop();
+    } catch (err) {
+      const msg = err instanceof Error ? err.name : "";
+      if (msg === "NotAllowedError") {
+        setCameraError("Kamera-Zugriff verweigert. Bitte erlaube den Kamera-Zugriff in den Browser-Einstellungen.");
+      } else if (msg === "NotFoundError") {
+        setCameraError("Keine Kamera gefunden. Nutze den Foto-Fallback unten.");
+      } else {
+        setCameraError("Kamera konnte nicht gestartet werden. Nutze den Foto-Fallback unten.");
+      }
+    }
+  }
+
+  function scanLoop() {
+    if (!scanningRef.current) return;
+
+    const now = Date.now();
+    if (now - lastScanTimeRef.current >= 500 && videoRef.current && detectorRef.current) {
+      lastScanTimeRef.current = now;
+
+      detectorRef.current.detect(videoRef.current).then((barcodes) => {
+        for (const bc of barcodes) {
+          const ean = bc.rawValue.trim();
+          if (ean && !scannedEansRef.current.has(ean)) {
+            scannedEansRef.current.add(ean);
+            playBeep();
+            triggerHaptic();
+            handleEanDetected(ean);
+          }
+        }
+      }).catch(() => {
+        // Detection error, continue scanning
+      });
+    }
+
+    animFrameRef.current = requestAnimationFrame(scanLoop);
+  }
+
+  async function handleEanDetected(ean: string) {
+    // Add placeholder entry
+    const newGame: ScannedGame = {
+      ean,
+      name: "",
+      bggId: null,
+      thumbnail: null,
+      status: "searching",
+      bggData: null,
+      target: "collection",
+    };
+    setScannedGames((prev) => [newGame, ...prev]);
+
+    // Step 1: Try BGG search with EAN directly
+    try {
+      const bggResults = await bggSearch(ean);
+      if (bggResults.length > 0) {
+        const data = await fetchBggThing(bggResults[0].bggId);
+        if (data) {
+          // Check duplicate
+          const existing = await getGameByBggId(data.bggId);
+          setScannedGames((prev) =>
+            prev.map((g) =>
+              g.ean === ean
+                ? { ...g, name: data.name, bggId: data.bggId, thumbnail: data.thumbnail, bggData: data, status: existing ? "duplicate" : "found" }
+                : g
+            )
+          );
+          return;
+        }
+      }
+    } catch {
+      // BGG search failed, continue to AI fallback
+    }
+
+    // Step 2: AI lookup by EAN
+    try {
+      const aiResult = await lookupGameByEan(ean);
+      if (aiResult.gameName) {
+        const bggResults = await bggSearch(aiResult.gameName);
+        if (bggResults.length > 0) {
+          const data = await fetchBggThing(bggResults[0].bggId);
+          if (data) {
+            const existing = await getGameByBggId(data.bggId);
+            setScannedGames((prev) =>
+              prev.map((g) =>
+                g.ean === ean
+                  ? { ...g, name: data.name, bggId: data.bggId, thumbnail: data.thumbnail, bggData: data, status: existing ? "duplicate" : "found" }
+                  : g
+              )
+            );
+            return;
+          }
+        }
+        // AI found name but BGG didn't match
+        setScannedGames((prev) =>
+          prev.map((g) => (g.ean === ean ? { ...g, name: aiResult.gameName!, status: "not_found" } : g))
+        );
+        return;
+      }
+    } catch {
+      // AI lookup failed
+    }
+
+    // Step 3: Not found
+    setScannedGames((prev) =>
+      prev.map((g) => (g.ean === ean ? { ...g, name: `EAN: ${ean}`, status: "not_found" } : g))
+    );
+  }
+
+  function toggleTarget(ean: string) {
+    setScannedGames((prev) =>
+      prev.map((g) =>
+        g.ean === ean ? { ...g, target: g.target === "collection" ? "wishlist" : "collection" } : g
+      )
+    );
+  }
+
+  function removeGame(ean: string) {
+    setScannedGames((prev) => prev.filter((g) => g.ean !== ean));
+    scannedEansRef.current.delete(ean);
+  }
+
+  async function addAllGames() {
+    const gamesToAdd = scannedGames.filter((g) => g.status === "found" && g.bggData);
+    if (gamesToAdd.length === 0) return;
+
+    setSaving(true);
+    let addedCount = 0;
+
+    for (const sg of gamesToAdd) {
+      const data = sg.bggData!;
+      try {
+        await createGame({
+          bggId: data.bggId,
+          name: data.name,
+          yearpublished: data.yearpublished,
+          minPlayers: data.minPlayers,
+          maxPlayers: data.maxPlayers,
+          playingTime: data.playingTime,
+          minPlayTime: data.minPlayTime,
+          maxPlayTime: data.maxPlayTime,
+          minAge: data.minAge,
+          averageWeight: data.averageWeight,
+          thumbnail: data.thumbnail,
+          image: data.image,
+          categories: data.categories,
+          mechanics: data.mechanics,
+          bggRating: data.bggRating,
+          bggRank: data.bggRank,
+          owned: sg.target === "collection",
+          wishlist: sg.target === "wishlist",
+        });
+        addedCount++;
+        setScannedGames((prev) =>
+          prev.map((g) => (g.ean === sg.ean ? { ...g, status: "added" } : g))
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message.includes("ConstraintError")) {
+          setScannedGames((prev) =>
+            prev.map((g) => (g.ean === sg.ean ? { ...g, status: "duplicate" } : g))
+          );
+        }
+      }
+    }
+
+    if (addedCount > 0) {
+      const newAchievements = await checkOnGameAdd();
+      if (newAchievements.length > 0) {
+        setAchievementQueue(newAchievements);
+      }
+    }
+
+    setSaving(false);
+
+    // If only one game added, navigate to it
+    if (addedCount === 1 && gamesToAdd.length === 1) {
+      const addedGame = await getGameByBggId(gamesToAdd[0].bggData!.bggId);
+      if (addedGame) {
+        router.push(`/game?id=${addedGame.id}`);
+      }
+    }
+  }
+
+  // Fallback: photo-based barcode scan (old method)
+  async function handleFallbackFile(file: File) {
+    setError(null);
     try {
       const base64 = await compressImage(file);
       const result = await recognizeBarcodeFromImage(base64);
-      setBarcode(result.barcode);
-      setGameName(result.gameName);
-      setConfidence(result.confidence);
-
-      if (result.gameName) {
-        // Search BGG for the recognized game
-        setSearching(true);
-        try {
-          const bggResults = await bggSearch(result.gameName);
-          setSearchResults(bggResults);
-        } catch {
-          setError("BGG-Suche fehlgeschlagen.");
+      if (result.barcode) {
+        if (!scannedEansRef.current.has(result.barcode)) {
+          scannedEansRef.current.add(result.barcode);
+          playBeep();
+          handleEanDetected(result.barcode);
+        } else {
+          setError("Dieser Barcode wurde bereits gescannt.");
         }
-        setSearching(false);
+      } else if (result.gameName) {
+        // AI recognized game but not barcode - search BGG directly
+        const bggResults = await bggSearch(result.gameName);
+        if (bggResults.length > 0) {
+          const data = await fetchBggThing(bggResults[0].bggId);
+          if (data) {
+            const fakeEan = `manual-${Date.now()}`;
+            const existing = await getGameByBggId(data.bggId);
+            setScannedGames((prev) => [
+              { ean: fakeEan, name: data.name, bggId: data.bggId, thumbnail: data.thumbnail, bggData: data, status: existing ? "duplicate" : "found", target: "collection" },
+              ...prev,
+            ]);
+            playBeep();
+          }
+        }
       } else {
-        setError("Kein Spiel auf dem Barcode erkannt. Versuche ein deutlicheres Foto.");
+        setError("Kein Barcode erkannt. Versuche ein deutlicheres Foto.");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       if (msg === "AI_NOT_CONFIGURED") {
         setError("AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
       } else {
-        setError("Barcode-Erkennung fehlgeschlagen. Versuche es erneut.");
+        setError("Barcode-Erkennung fehlgeschlagen.");
       }
-    } finally {
-      setAnalyzing(false);
     }
   }
 
-  async function handleAddFromBgg(result: BggSearchResult) {
-    setSaving(true);
-    try {
-      const data = await fetchBggThing(result.bggId);
-      if (!data) {
-        setError("Spieldetails konnten nicht geladen werden.");
-        setSaving(false);
-        return;
-      }
-      const game = await createGame({
-        bggId: data.bggId,
-        name: data.name,
-        yearpublished: data.yearpublished,
-        minPlayers: data.minPlayers,
-        maxPlayers: data.maxPlayers,
-        playingTime: data.playingTime,
-        minPlayTime: data.minPlayTime,
-        maxPlayTime: data.maxPlayTime,
-        minAge: data.minAge,
-        averageWeight: data.averageWeight,
-        thumbnail: data.thumbnail,
-        image: data.image,
-        categories: data.categories,
-        mechanics: data.mechanics,
-        bggRating: data.bggRating,
-        bggRank: data.bggRank,
-        owned: true,
-      });
-      router.push(`/game?id=${game.id}`);
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("ConstraintError")) {
-        setError("Dieses Spiel ist bereits in deiner Sammlung.");
-      } else {
-        setError("Hinzufügen fehlgeschlagen.");
-      }
-      setSaving(false);
-    }
-  }
-
-  if (aiReady === false) {
-    return (
-      <div className="mt-5 rounded-2xl border border-amber/30 bg-amber-light p-5">
-        <h3 className="text-sm font-semibold text-warm-900">AI-Provider benötigt</h3>
-        <p className="mt-1 text-sm text-warm-600">
-          Für die Barcode-Erkennung wird ein AI-Provider benötigt.
-        </p>
-        <a href="/settings" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-forest px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark">
-          In Einstellungen einrichten
-        </a>
-      </div>
-    );
-  }
+  const addableGames = scannedGames.filter((g) => g.status === "found");
 
   return (
     <div className="mt-5 space-y-4">
-      <div className="rounded-2xl border border-warm-200/80 bg-surface p-5">
-        <p className="text-sm text-warm-500">
-          Fotografiere den Barcode oder EAN auf der Spieleschachtel. Die AI erkennt das Spiel automatisch.
-        </p>
-
-        <div className="mt-4">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFile(file);
-            }}
-            className="hidden"
-          />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={analyzing}
-            className="w-full rounded-xl bg-forest px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md disabled:opacity-50 active:scale-[0.98]"
-          >
-            {analyzing ? (
+      {/* Scanner area */}
+      <div className="rounded-2xl border border-warm-200/80 bg-surface overflow-hidden">
+        {!scanning ? (
+          <div className="p-5">
+            <p className="text-sm text-warm-500 mb-4">
+              Live-Scanner: Halte den Barcode vor die Kamera und das Spiel wird automatisch erkannt. Multi-Scan: Scanne mehrere Spiele hintereinander!
+            </p>
+            <button
+              onClick={startCamera}
+              className="w-full rounded-xl bg-forest px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
+            >
               <span className="flex items-center justify-center gap-2">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                Barcode wird analysiert...
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Live-Scanner starten
               </span>
-            ) : (
-              "Barcode scannen"
+            </button>
+
+            {cameraError && (
+              <div className="mt-3 rounded-xl bg-coral-light px-4 py-2.5 text-sm text-coral">
+                {cameraError}
+              </div>
             )}
-          </button>
-        </div>
 
-        {imagePreview && (
-          <div className="mt-4 overflow-hidden rounded-xl border border-warm-200">
-            <img src={imagePreview} alt="Barcode" className="w-full max-h-48 object-contain bg-warm-50" />
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-3 rounded-xl bg-coral-light px-4 py-2.5 text-sm text-coral">
-            {error}
-          </div>
-        )}
-
-        {gameName && (
-          <div className="mt-4 rounded-xl bg-forest-light p-4">
-            <p className="text-sm font-semibold text-forest">Erkanntes Spiel: {gameName}</p>
-            {barcode && (
-              <p className="mt-0.5 text-xs text-forest/70">Barcode: {barcode}</p>
-            )}
-            {confidence && (
-              <p className="mt-0.5 text-xs text-forest/70">
-                Konfidenz: {confidence === "high" ? "Hoch" : confidence === "medium" ? "Mittel" : "Niedrig"}
-              </p>
-            )}
-          </div>
-        )}
-
-        {searching && (
-          <div className="mt-3 flex items-center gap-2.5 text-sm text-warm-500">
-            <div className="spinner" />
-            Suche auf BGG...
-          </div>
-        )}
-
-        {searchResults.length > 0 && (
-          <div className="mt-3">
-            <p className="text-xs font-semibold text-warm-500 uppercase tracking-wider mb-2">BGG Ergebnisse</p>
-            <div className="max-h-48 overflow-y-auto rounded-xl border border-warm-200 bg-surface">
-              {searchResults.slice(0, 5).map((result) => (
-                <button
-                  key={result.bggId}
-                  onClick={() => handleAddFromBgg(result)}
-                  disabled={saving}
-                  className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-forest-light border-b border-warm-100 last:border-b-0 disabled:opacity-50"
-                >
-                  <span className="font-medium text-warm-900">{result.name}</span>
-                  {result.yearpublished && (
-                    <span className="ml-2 flex-shrink-0 text-xs text-warm-500">({result.yearpublished})</span>
-                  )}
-                </button>
-              ))}
+            {/* Fallback: Foto-Upload */}
+            <div className="mt-4 pt-4 border-t border-warm-200">
+              <p className="text-xs text-warm-500 mb-2">Oder: Barcode-Foto aufnehmen (Fallback)</p>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFallbackFile(file);
+                }}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="w-full rounded-xl border border-warm-200 bg-warm-50 px-4 py-2.5 text-sm font-medium text-warm-700 transition-all hover:bg-warm-100 active:scale-[0.98]"
+              >
+                Barcode fotografieren
+              </button>
             </div>
+          </div>
+        ) : (
+          <div className="relative">
+            {/* Video stream */}
+            <video
+              ref={videoRef}
+              className="w-full aspect-[4/3] object-cover bg-black"
+              playsInline
+              muted
+              autoPlay
+            />
+            {/* Scan frame overlay */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-64 h-40 relative">
+                {/* Corner brackets */}
+                <div className="absolute top-0 left-0 w-6 h-6 border-t-3 border-l-3 border-amber rounded-tl-lg" style={{ borderWidth: '3px' }} />
+                <div className="absolute top-0 right-0 w-6 h-6 border-t-3 border-r-3 border-amber rounded-tr-lg" style={{ borderWidth: '3px' }} />
+                <div className="absolute bottom-0 left-0 w-6 h-6 border-b-3 border-l-3 border-amber rounded-bl-lg" style={{ borderWidth: '3px' }} />
+                <div className="absolute bottom-0 right-0 w-6 h-6 border-b-3 border-r-3 border-amber rounded-br-lg" style={{ borderWidth: '3px' }} />
+                {/* Scan line animation */}
+                <div className="absolute left-2 right-2 h-0.5 bg-amber/60 animate-pulse" style={{ top: '50%' }} />
+              </div>
+            </div>
+            {/* Scanned count badge */}
+            {scannedGames.length > 0 && (
+              <div className="absolute top-3 left-3 bg-forest text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg">
+                {scannedGames.length} gescannt
+              </div>
+            )}
+            {/* Stop button */}
+            <button
+              onClick={stopCamera}
+              className="absolute top-3 right-3 bg-black/60 text-white p-2 rounded-full shadow-lg hover:bg-black/80 transition-colors"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         )}
       </div>
+
+      {error && (
+        <div className="rounded-xl bg-coral-light px-4 py-2.5 text-sm text-coral">
+          {error}
+        </div>
+      )}
+
+      {/* Scanned games list */}
+      {scannedGames.length > 0 && (
+        <div className="rounded-2xl border border-warm-200/80 bg-surface">
+          <div className="px-4 py-3 border-b border-warm-200">
+            <p className="text-xs font-semibold text-warm-500 uppercase tracking-wider">
+              Gescannte Spiele ({scannedGames.length})
+            </p>
+          </div>
+          <div className="max-h-64 overflow-y-auto divide-y divide-warm-100">
+            {scannedGames.map((game) => (
+              <div key={game.ean} className="flex items-center gap-3 px-4 py-3">
+                {/* Thumbnail */}
+                <div className="h-10 w-10 flex-shrink-0 rounded-lg bg-warm-100 overflow-hidden">
+                  {game.thumbnail ? (
+                    <img src={game.thumbnail} alt={game.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center">
+                      {game.status === "searching" ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-warm-300 border-t-forest" />
+                      ) : (
+                        <svg className="h-5 w-5 text-warm-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-warm-900 truncate">
+                    {game.status === "searching" ? "Wird gesucht..." : game.name || `EAN: ${game.ean}`}
+                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {game.status === "found" && (
+                      <span className="text-xs text-forest font-medium">Gefunden</span>
+                    )}
+                    {game.status === "duplicate" && (
+                      <span className="text-xs text-amber-dark font-medium">Schon in Sammlung</span>
+                    )}
+                    {game.status === "not_found" && (
+                      <span className="text-xs text-coral font-medium">Nicht gefunden</span>
+                    )}
+                    {game.status === "added" && (
+                      <span className="text-xs text-forest font-medium">Hinzugefügt!</span>
+                    )}
+                    {game.status === "searching" && (
+                      <span className="text-xs text-warm-500">EAN: {game.ean}</span>
+                    )}
+                  </div>
+                </div>
+                {/* Actions */}
+                {game.status === "found" && (
+                  <button
+                    onClick={() => toggleTarget(game.ean)}
+                    className={`flex-shrink-0 rounded-lg px-2 py-1 text-xs font-medium transition-colors ${
+                      game.target === "collection"
+                        ? "bg-forest-light text-forest"
+                        : "bg-amber-light text-amber-dark"
+                    }`}
+                  >
+                    {game.target === "collection" ? "Sammlung" : "Wunschliste"}
+                  </button>
+                )}
+                {(game.status === "not_found" || game.status === "duplicate") && (
+                  <button
+                    onClick={() => removeGame(game.ean)}
+                    className="flex-shrink-0 p-1 text-warm-400 hover:text-coral transition-colors"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Add all button */}
+          {addableGames.length > 0 && (
+            <div className="px-4 py-3 border-t border-warm-200">
+              <button
+                onClick={addAllGames}
+                disabled={saving}
+                className="w-full rounded-xl bg-forest px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md disabled:opacity-50 active:scale-[0.98]"
+              >
+                {saving ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Wird hinzugefügt...
+                  </span>
+                ) : (
+                  `Fertig — ${addableGames.length} Spiel${addableGames.length !== 1 ? "e" : ""} hinzufügen`
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {achievementQueue.length > 0 && (
+        <AchievementToast
+          achievementKey={achievementQueue[0]}
+          onDone={() => setAchievementQueue((prev) => prev.slice(1))}
+        />
+      )}
     </div>
   );
 }

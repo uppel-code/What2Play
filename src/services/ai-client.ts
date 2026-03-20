@@ -867,6 +867,61 @@ function parseBarcodeResponse(text: string): BarcodeResult {
   }
 }
 
+// ─── EAN → Game Lookup (AI-based) ───
+
+export interface EanLookupResult {
+  gameName: string | null;
+  confidence: "high" | "medium" | "low";
+}
+
+export async function lookupGameByEan(ean: string): Promise<EanLookupResult> {
+  const config = await getAiConfig();
+  if (!config) throw new Error("AI_NOT_CONFIGURED");
+
+  const prompt = `Du bist ein Brettspiel-Experte. Welches Brettspiel hat die EAN/UPC "${ean}"?
+
+Recherchiere in deinem Wissen. Typische Brettspiel-EANs beginnen mit 4002051 (Kosmos), 4005556 (Ravensburger), 5425016 (Repos Production), 826956 (Stonemaier Games), etc.
+
+Antworte NUR mit validem JSON (kein Markdown):
+{"gameName": "Name des Brettspiels", "confidence": "high"}
+
+Wenn du das Spiel nicht kennst: {"gameName": null, "confidence": "low"}
+confidence: "high"=sicher, "medium"=wahrscheinlich, "low"=geraten`;
+
+  let responseText: string;
+  switch (config.provider) {
+    case "gemini":
+      responseText = await callGeminiText(config.apiKey, prompt);
+      break;
+    case "openai":
+      responseText = await callOpenAIText(config.apiKey, prompt);
+      break;
+    case "claude":
+      responseText = await callClaudeText(config.apiKey, prompt);
+      break;
+    default:
+      throw new Error("UNKNOWN_PROVIDER");
+  }
+
+  return parseEanLookupResponse(responseText);
+}
+
+function parseEanLookupResponse(text: string): EanLookupResult {
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  }
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      gameName: parsed.gameName || null,
+      confidence: ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "low",
+    };
+  } catch {
+    return { gameName: null, confidence: "low" };
+  }
+}
+
 // ─── Response Parsing ───
 
 function parseAiResponse(text: string): RecognizedGame[] {
