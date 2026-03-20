@@ -510,14 +510,14 @@ Respond ONLY with valid JSON (no markdown):
 }
 
 async function callGeminiText(apiKey: string, prompt: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
   };
 
-  console.log("[AI] callGeminiText → gemini-2.0-flash, no tools");
+  console.log("[AI] callGeminiText → gemini-2.5-flash, no tools");
   const { status, data } = await aiPost(url, body, {});
 
   if (status !== 200) {
@@ -765,7 +765,7 @@ export async function askRuleQuestion(
 }
 
 async function callGeminiChat(apiKey: string, systemPrompt: string, history: RuleMessage[], question: string): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
   const contents = [
     { role: "user", parts: [{ text: systemPrompt }] },
@@ -782,7 +782,7 @@ async function callGeminiChat(apiKey: string, systemPrompt: string, history: Rul
     generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
   };
 
-  console.log("[AI] callGeminiChat → gemini-2.0-flash, no tools");
+  console.log("[AI] callGeminiChat → gemini-2.5-flash, no tools");
   const { status, data } = await aiPost(url, body, {});
 
   if (status !== 200) {
