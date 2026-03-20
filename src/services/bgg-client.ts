@@ -36,6 +36,31 @@ export async function isBggConfigured(): Promise<boolean> {
   return !!token;
 }
 
+export interface BggTestResult {
+  success: boolean;
+  status: number;
+  message: string;
+}
+
+export async function testBggConnection(): Promise<BggTestResult> {
+  const token = await getBggToken();
+  if (!token) return { success: false, status: 0, message: "Kein BGG Token konfiguriert." };
+
+  try {
+    // Simple search query to verify the token works
+    const url = `${BGG_API_BASE}/search?query=Catan&type=boardgame&exact=1`;
+    const { status, data } = await bggFetch(url);
+    if (status === 401) return { success: false, status, message: "Token ungültig oder abgelaufen." };
+    if (status === 200) {
+      const count = (data.match(/<item /g) || []).length;
+      return { success: true, status, message: `Verbindung OK — ${count} Ergebnis(se) für Testsuche.` };
+    }
+    return { success: false, status, message: `Unerwarteter Status: ${status}` };
+  } catch (err) {
+    return { success: false, status: 0, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ─── HTTP Helper ───
 
 async function bggFetch(url: string): Promise<{ status: number; data: string }> {

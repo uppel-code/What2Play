@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { getBggToken, setBggToken, isBggConfigured } from "@/services/bgg-client";
+import { getBggToken, setBggToken, isBggConfigured, testBggConnection } from "@/services/bgg-client";
+import type { BggTestResult } from "@/services/bgg-client";
 import { getAiConfig, setAiConfig, clearAiConfig, isAiConfigured, getGameLanguage, setGameLanguage, testAiConnection, getUseNativeHttp, setUseNativeHttp } from "@/services/ai-client";
 import type { AiProvider, GameLanguage, AiTestResult } from "@/services/ai-client";
 import { getGameCount, getAllGamesRaw, getAllPlayersRaw, getAllPlayGroupsRaw, getAllSessionsRaw, getAllLoansRaw, clearAllData, bulkImportData } from "@/lib/db-client";
@@ -18,6 +19,8 @@ export default function SettingsPage() {
   const [bggConfigured, setBggConfigured] = useState<boolean | null>(null);
   const [bggSaving, setBggSaving] = useState(false);
   const [bggSaved, setBggSaved] = useState(false);
+  const [bggTesting, setBggTesting] = useState(false);
+  const [bggTestResult, setBggTestResult] = useState<BggTestResult | null>(null);
 
   const [aiProvider, setAiProvider] = useState<AiProvider>("gemini");
   const [aiKey, setAiKey] = useState("");
@@ -89,6 +92,18 @@ export default function SettingsPage() {
     setToken("");
     setSavedToken(null);
     setBggConfigured(false);
+    setBggTestResult(null);
+  }
+
+  async function handleTestBgg() {
+    setBggTesting(true);
+    setBggTestResult(null);
+    try {
+      const result = await testBggConnection();
+      setBggTestResult(result);
+    } finally {
+      setBggTesting(false);
+    }
   }
 
   async function handleSaveAiConfig() {
@@ -292,12 +307,30 @@ export default function SettingsPage() {
           )}
 
           {savedToken && !bggSaved && (
-            <button
-              onClick={handleClearBggToken}
-              className="text-sm text-coral hover:text-coral-dark font-medium transition-colors"
-            >
-              Token entfernen
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleClearBggToken}
+                className="text-sm text-coral hover:text-coral-dark font-medium transition-colors"
+              >
+                Token entfernen
+              </button>
+              <button
+                onClick={handleTestBgg}
+                disabled={bggTesting}
+                className="rounded-xl border border-forest px-4 py-2 text-sm font-semibold text-forest transition-all hover:bg-forest-light disabled:opacity-50 active:scale-[0.98]"
+              >
+                {bggTesting ? "Teste..." : "BGG Token testen"}
+              </button>
+            </div>
+          )}
+
+          {bggTestResult && (
+            <div className={`rounded-xl p-4 text-sm ${bggTestResult.success ? "bg-forest-light" : "bg-coral/10"}`}>
+              <span className={`font-semibold ${bggTestResult.success ? "text-forest" : "text-coral"}`}>
+                {bggTestResult.success ? "Verbindung OK!" : `Fehler (Status ${bggTestResult.status})`}
+              </span>
+              <span className="ml-2 text-warm-600">{bggTestResult.message}</span>
+            </div>
           )}
         </div>
       </div>
