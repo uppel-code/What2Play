@@ -352,6 +352,28 @@ describe("recommendation engine", () => {
         expect(r.score).toBeLessThanOrEqual(100);
       }
     });
+
+    it("BUG-25: score never exceeds 100 even with all bonuses", () => {
+      const game = makeGame({
+        id: 1,
+        favorite: true,
+        averageWeight: 1.5,
+        playingTime: 30,
+        mechanics: ["Worker Placement"],
+        tags: ["good-with-newcomers", "quick-to-explain"],
+        lastPlayed: null,
+      });
+
+      const results = recommendGames([game], {
+        playerCount: 3,
+        availableTime: 60,
+        desiredComplexity: 1.5,
+        mood: "creative",
+        preferNewcomers: true,
+      });
+
+      expect(results[0].score).toBeLessThanOrEqual(100);
+    });
   });
 
   describe("only owned games", () => {

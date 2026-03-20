@@ -28,6 +28,10 @@ import {
   getActiveLoanByGame,
   getLoansByGame,
   getAllActiveLoans,
+  addChatMessage,
+  getChatMessages,
+  createExpansion,
+  getExpansionsByGame,
 } from "@/lib/db-client";
 import type { CreateGameInput } from "@/types/game";
 
@@ -453,6 +457,75 @@ describe("db-client", () => {
 
       const loans = await getLoansByGame(game.id);
       expect(loans).toHaveLength(2);
+    });
+
+    it("rejects returnedAt before loanDate (BUG-26)", async () => {
+      const game = await createGame(sampleGame);
+      const loan = await createLoan({ gameId: game.id, personName: "Alex", loanDate: "2026-03-15" });
+      await expect(returnLoan(loan.id, "2026-03-01")).rejects.toThrow("Rückgabedatum");
+    });
+  });
+
+  // ── Cascade Delete (BUG-01) ──
+
+  describe("cascade delete", () => {
+    it("deletes related loans, sessions, expansions, and chat messages when game is deleted", async () => {
+      const game = await createGame(sampleGame);
+      await createLoan({ gameId: game.id, personName: "Test", loanDate: "2026-01-01" });
+      await createPlaySession({ gameId: game.id, playedAt: "2026-01-01", playerCount: 2, duration: 60 });
+      await createExpansion({ parentGameId: game.id, name: "Expansion 1" });
+      await addChatMessage(game.id, "user", "Hello");
+
+      await deleteGame(game.id);
+
+      expect(await getGameById(game.id)).toBeUndefined();
+      expect(await getLoansByGame(game.id)).toHaveLength(0);
+      expect(await getSessionsByGame(game.id)).toHaveLength(0);
+      expect(await getExpansionsByGame(game.id)).toHaveLength(0);
+      expect(await getChatMessages(game.id)).toHaveLength(0);
+    });
+  });
+
+  // ── Wishlist/ForSale Mutual Exclusion (BUG-06) ──
+
+  describe("wishlist/forSale mutual exclusion", () => {
+    it("sets wishlist=false when forSale=true", async () => {
+      const game = await createGame({ ...sampleGame, wishlist: true });
+      const updated = await updateGame(game.id, { forSale: true });
+      expect(updated!.forSale).toBe(true);
+      expect(updated!.wishlist).toBe(false);
+    });
+
+    it("sets forSale=false when wishlist=true", async () => {
+      const game = await createGame({ ...sampleGame, forSale: true });
+      const updated = await updateGame(game.id, { wishlist: true });
+      expect(updated!.wishlist).toBe(true);
+      expect(updated!.forSale).toBe(false);
+    });
+  });
+
+  // ── Player deletion with validation (BUG-17) ──
+
+  describe("player deletion validation", () => {
+    it("returns warnings when player has sessions", async () => {
+      const game = await createGame(sampleGame);
+      const player = await createPlayer("Alice");
+      await createPlaySession({ gameId: game.id, playedAt: "2026-01-01", playerCount: 2, duration: 60, winnerId: player.id });
+
+      const result = await deletePlayer(player.id);
+      expect(result.deleted).toBe(true);
+      expect(result.warnings.length).toBeGreaterThan(0);
+    });
+
+    it("nullifies winnerId when player is deleted", async () => {
+      const game = await createGame(sampleGame);
+      const player = await createPlayer("Alice");
+      const session = await createPlaySession({ gameId: game.id, playedAt: "2026-01-01", playerCount: 2, duration: 60, winnerId: player.id });
+
+      await deletePlayer(player.id);
+
+      const sessions = await getSessionsByGame(game.id);
+      expect(sessions[0].winnerId).toBeNull();
     });
   });
 });
