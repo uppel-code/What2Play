@@ -75,22 +75,15 @@ export default function RegelGuru({ game }: { game: Game }) {
       // Trim to max 10 messages
       await trimChatMessages(game.id, 10);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      const msg = err instanceof Error ? err.message : String(err);
       if (msg === "AI_NOT_CONFIGURED") {
         setError("AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
       } else if (msg === "AI_RATE_LIMIT") {
         setError("Zu viele Anfragen. Warte kurz und versuche es nochmal.");
       } else if (msg.startsWith("AI_INVALID_KEY")) {
         setError("Ungültiger API-Key. Bitte prüfe deine Einstellungen.");
-      } else if (msg.startsWith("AI_ERROR_400")) {
-        const detail = msg.replace("AI_ERROR_400: ", "");
-        setError(`API Fehler (400): ${detail}`);
-      } else if (msg.startsWith("AI_ERROR_")) {
-        const code = msg.match(/AI_ERROR_(\d+)/)?.[1] || "?";
-        const detail = msg.replace(/AI_ERROR_\d+:?\s*/, "");
-        setError(`Serverfehler (${code}): ${detail || "Unbekannt"}`);
       } else {
-        setError("Antwort konnte nicht geladen werden. Bitte versuche es erneut.");
+        setError(`Fehler: ${msg.substring(0, 300)}`);
       }
     } finally {
       setLoading(false);

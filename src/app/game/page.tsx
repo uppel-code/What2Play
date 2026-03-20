@@ -191,22 +191,15 @@ function GameDetailContent() {
       // Save to DB for next time
       await saveQuickRules(game.id, text);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      const msg = err instanceof Error ? err.message : String(err);
       if (msg === "AI_NOT_CONFIGURED") {
         setQuickRulesError("AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
       } else if (msg === "AI_RATE_LIMIT") {
         setQuickRulesError("Zu viele Anfragen. Warte kurz und versuche es nochmal.");
       } else if (msg.startsWith("AI_INVALID_KEY")) {
         setQuickRulesError("Ungültiger API-Key. Bitte prüfe deine Einstellungen.");
-      } else if (msg.startsWith("AI_ERROR_400")) {
-        const detail = msg.replace("AI_ERROR_400: ", "");
-        setQuickRulesError(`API Fehler (400): ${detail}`);
-      } else if (msg.startsWith("AI_ERROR_")) {
-        const code = msg.match(/AI_ERROR_(\d+)/)?.[1] || "?";
-        const detail = msg.replace(/AI_ERROR_\d+:?\s*/, "");
-        setQuickRulesError(`Serverfehler (${code}): ${detail || "Unbekannt"}`);
       } else {
-        setQuickRulesError("Regeln konnten nicht geladen werden. Bitte versuche es erneut.");
+        setQuickRulesError(`Fehler: ${msg.substring(0, 300)}`);
       }
     } finally {
       setQuickRulesLoading(false);
@@ -974,8 +967,9 @@ function GameDetailContent() {
                         const text = await generateQuickRules(game.name, mechanicLabels);
                         setQuickRulesText(text);
                         await saveQuickRules(game.id, text);
-                      } catch {
-                        setQuickRulesError("Regeln konnten nicht neu geladen werden.");
+                      } catch (reloadErr) {
+                        const reloadMsg = reloadErr instanceof Error ? reloadErr.message : String(reloadErr);
+                        setQuickRulesError(`Fehler beim Neuladen: ${reloadMsg.substring(0, 300)}`);
                       } finally {
                         setQuickRulesLoading(false);
                       }
