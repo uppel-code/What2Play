@@ -290,8 +290,11 @@ export async function updateGame(
   id: number,
   data: UpdateGameInput
 ): Promise<Game | undefined> {
+  // BUG-06: Mutual exclusion between wishlist and forSale
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updates: any = { ...data, updatedAt: new Date().toISOString() };
+  if (updates.forSale === true) updates.wishlist = false;
+  if (updates.wishlist === true) updates.forSale = false;
   await db.games.update(id, updates);
   return db.games.get(id);
 }
@@ -299,7 +302,13 @@ export async function updateGame(
 export async function deleteGame(id: number): Promise<boolean> {
   const existing = await db.games.get(id);
   if (!existing) return false;
-  await db.games.delete(id);
+  await db.transaction("rw", [db.games, db.loans, db.playSessions, db.expansions, db.chatMessages], async () => {
+    await db.loans.where("gameId").equals(id).delete();
+    await db.playSessions.where("gameId").equals(id).delete();
+    await db.expansions.where("parentGameId").equals(id).delete();
+    await db.chatMessages.where("gameId").equals(id).delete();
+    await db.games.delete(id);
+  });
   return true;
 }
 
@@ -361,9 +370,24 @@ export async function updatePlayer(id: number, data: Partial<Omit<Player, "id">>
   };
 }
 
-export async function deletePlayer(id: number): Promise<boolean> {
+export async function deletePlayer(id: number): Promise<{ deleted: boolean; warnings: string[] }> {
   const existing = await db.players.get(id);
-  if (!existing) return false;
+  if (!existing) return { deleted: false, warnings: [] };
+  const warnings: string[] = [];
+  // BUG-17: Check for references before deletion
+  const sessionCount = await db.playSessions.filter((s) => s.winnerId === id).count();
+  if (sessionCount > 0) {
+    warnings.push(`${sessionCount} Session(s) referenzieren diesen Spieler als Gewinner.`);
+  }
+  const loanCount = await db.loans.filter((l) => l.personName === existing.name).count();
+  if (loanCount > 0) {
+    warnings.push(`${loanCount} Ausleihe(n) referenzieren diesen Spieler.`);
+  }
+  // Nullify winnerId references
+  const sessionsWithPlayer = await db.playSessions.filter((s) => s.winnerId === id).toArray();
+  for (const s of sessionsWithPlayer) {
+    await db.playSessions.update(s.id, { winnerId: null });
+  }
   await db.players.delete(id);
   // Also remove from all groups
   const groups = await db.playGroups.toArray();
@@ -375,7 +399,7 @@ export async function deletePlayer(id: number): Promise<boolean> {
       });
     }
   }
-  return true;
+  return { deleted: true, warnings };
 }
 
 // ─── PlayGroup Operations ───
@@ -610,10 +634,14 @@ export async function createLoan(data: {
   return (await db.loans.get(id))! as Loan;
 }
 
-export async function returnLoan(id: number): Promise<Loan | undefined> {
+export async function returnLoan(id: number, returnDate?: string): Promise<Loan | undefined> {
   const existing = await db.loans.get(id);
   if (!existing) return undefined;
-  const now = new Date().toISOString().split("T")[0];
+  const now = returnDate || new Date().toISOString().split("T")[0];
+  // BUG-26: Validate returnedAt >= loanDate
+  if (now < existing.loanDate) {
+    throw new Error("Rückgabedatum darf nicht vor dem Ausleihdatum liegen.");
+  }
   await db.loans.update(id, { returnedAt: now });
   return (await db.loans.get(id))! as Loan;
 }

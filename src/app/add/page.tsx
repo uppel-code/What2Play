@@ -121,6 +121,13 @@ function BggSearchTab({ router }: { router: ReturnType<typeof useRouter> }) {
     isBggConfigured().then(setBggConfigured).catch(() => setBggConfigured(false));
   }, []);
 
+  // BUG-16: Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
   const doSearch = useCallback(async (searchQuery: string) => {
     if (searchQuery.trim().length < 2) {
       setSearchResults([]);
@@ -465,36 +472,43 @@ function BggCollectionTab({ router }: { router: ReturnType<typeof useRouter> }) 
       } else if (result.success && result.games.length > 0) {
         let imported = 0;
         let skipped = 0;
+        let failed = 0;
         for (const game of result.games) {
-          const existing = await getGameByBggId(game.bggId);
-          if (existing) {
-            skipped++;
-            continue;
+          try {
+            const existing = await getGameByBggId(game.bggId);
+            if (existing) {
+              skipped++;
+              continue;
+            }
+            await createGame({
+              bggId: game.bggId,
+              name: game.name,
+              yearpublished: game.yearpublished,
+              minPlayers: game.minPlayers,
+              maxPlayers: game.maxPlayers,
+              playingTime: game.playingTime,
+              minPlayTime: game.minPlayTime,
+              maxPlayTime: game.maxPlayTime,
+              minAge: game.minAge,
+              averageWeight: game.averageWeight,
+              thumbnail: game.thumbnail,
+              image: game.image,
+              categories: game.categories,
+              mechanics: game.mechanics,
+              bggRating: game.bggRating,
+              bggRank: game.bggRank,
+              owned: !importAsWishlist,
+              wishlist: importAsWishlist,
+            });
+            imported++;
+          } catch (err) {
+            console.error(`Failed to import game "${game.name}":`, err);
+            failed++;
           }
-          await createGame({
-            bggId: game.bggId,
-            name: game.name,
-            yearpublished: game.yearpublished,
-            minPlayers: game.minPlayers,
-            maxPlayers: game.maxPlayers,
-            playingTime: game.playingTime,
-            minPlayTime: game.minPlayTime,
-            maxPlayTime: game.maxPlayTime,
-            minAge: game.minAge,
-            averageWeight: game.averageWeight,
-            thumbnail: game.thumbnail,
-            image: game.image,
-            categories: game.categories,
-            mechanics: game.mechanics,
-            bggRating: game.bggRating,
-            bggRank: game.bggRank,
-            owned: !importAsWishlist,
-            wishlist: importAsWishlist,
-          });
-          imported++;
         }
         const target = importAsWishlist ? "Wunschliste" : "Sammlung";
-        setStatus(`${imported} Spiele in ${target} importiert, ${skipped} übersprungen.`);
+        const failedMsg = failed > 0 ? `, ${failed} fehlgeschlagen` : "";
+        setStatus(`${imported} Spiele in ${target} importiert, ${skipped} übersprungen${failedMsg}.`);
         setStatusType("success");
         if (imported > 0) {
           setTimeout(() => router.push("/"), 1500);

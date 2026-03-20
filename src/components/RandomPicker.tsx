@@ -110,7 +110,7 @@ export default function RandomPicker({ games }: RandomPickerProps) {
           <div className="animate-picker-fade-in absolute inset-0 bg-warm-900/60 backdrop-blur-sm dark:bg-black/70" />
 
           {/* Modal */}
-          <div className="animate-picker-pop relative w-full max-w-sm overflow-hidden rounded-2xl bg-surface shadow-2xl">
+          <div className="animate-picker-pop relative w-full max-w-sm overflow-hidden rounded-2xl bg-surface dark:bg-warm-800 shadow-2xl">
             {/* Close button */}
             {done && (
               <button

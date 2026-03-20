@@ -31,6 +31,7 @@ function makeGame(overrides: Partial<Game> = {}): Game {
     bggRank: 100,
     quickRules: null,
     owned: true,
+    wishlist: false,
     shelfLocation: null,
     lastPlayed: null,
     favorite: false,

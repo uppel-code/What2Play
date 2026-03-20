@@ -8,6 +8,7 @@ import {
   getAllSessions,
   unlockAchievement,
   getAchievement,
+  getGameById,
 } from "@/lib/db-client";
 
 export const ACHIEVEMENT_DEFINITIONS: AchievementDefinition[] = [
@@ -110,12 +111,17 @@ export async function checkOnPlaySession(
   const variety = await getAchievement("variety_5");
   if (!variety) {
     const sessions = await getAllSessions();
-    // We need to collect all unique mechanics from games that have been played
-    // For simplicity, we track mechanics from current context + check threshold
-    // The caller should provide gameMechanics; we accumulate from all session games
-    const allMechanics = new Set<string>(gameMechanics);
-    // We'll need game data for other sessions - but that's expensive
-    // Instead, just check if this game's mechanics push us over 5 unique
+    // BUG-02: Load all played games and accumulate their mechanics
+    const playedGameIds = new Set(sessions.map((s) => s.gameId));
+    const allMechanics = new Set<string>();
+    for (const gameId of playedGameIds) {
+      const g = await getGameById(gameId);
+      if (g) {
+        for (const m of g.mechanics) allMechanics.add(m);
+      }
+    }
+    // Also include current game's mechanics
+    for (const m of gameMechanics) allMechanics.add(m);
     if (allMechanics.size >= 5) {
       const a = await unlockAchievement("variety_5");
       if (a) unlocked.push("variety_5");
@@ -126,15 +132,16 @@ export async function checkOnPlaySession(
   const streak = await getAchievement("streak_3");
   if (!streak) {
     const sessions = await getAllSessions();
-    const playDates = new Set(sessions.map((s) => s.playedAt));
+    // BUG-07: Normalize dates to YYYY-MM-DD strings to avoid float comparison issues
+    const playDates = new Set(sessions.map((s) => s.playedAt.split("T")[0]));
     const sortedDates = [...playDates].sort();
 
     let maxStreak = 1;
     let currentStreak = 1;
     for (let i = 1; i < sortedDates.length; i++) {
-      const prev = new Date(sortedDates[i - 1]);
-      const curr = new Date(sortedDates[i]);
-      const diffDays = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
+      const prev = new Date(sortedDates[i - 1] + "T00:00:00");
+      const curr = new Date(sortedDates[i] + "T00:00:00");
+      const diffDays = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
       if (diffDays === 1) {
         currentStreak++;
         maxStreak = Math.max(maxStreak, currentStreak);

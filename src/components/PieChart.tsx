@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface PieSlice {
   label: string;
@@ -27,6 +27,16 @@ export default function PieChart({
   className?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // BUG-20: Re-render on dark mode change
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    setIsDarkMode(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDarkMode(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -66,7 +76,7 @@ export default function PieChart({
     const bg = getComputedStyle(document.documentElement).getPropertyValue("--color-surface").trim();
     ctx.fillStyle = bg || "#ffffff";
     ctx.fill();
-  }, [slices, size]);
+  }, [slices, size, isDarkMode]);
 
   return (
     <div className={className}>

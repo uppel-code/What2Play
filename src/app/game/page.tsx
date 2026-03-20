@@ -28,8 +28,10 @@ function GameDetailContent() {
   const [game, setGame] = useState<Game | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showSessionModal, setShowSessionModal] = useState(false);
-  const [showQuickRules, setShowQuickRules] = useState(false);
+  // BUG-08: Single modal state to prevent multiple modals
+  const [openModal, setOpenModal] = useState<null | "session" | "rules" | "sale" | "qr" | "loan" | "expansion">(null);
+  const showSessionModal = openModal === "session";
+  const showQuickRules = openModal === "rules";
   const [quickRulesText, setQuickRulesText] = useState<string | null>(null);
   const [quickRulesLoading, setQuickRulesLoading] = useState(false);
   const [quickRulesError, setQuickRulesError] = useState<string | null>(null);
@@ -37,30 +39,39 @@ function GameDetailContent() {
   const [sessions, setSessions] = useState<PlaySession[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [activeLoan, setActiveLoan] = useState<Loan | null>(null);
-  const [showLoanForm, setShowLoanForm] = useState(false);
+  const showLoanForm = openModal === "loan";
   const [loanName, setLoanName] = useState("");
   const [loanDate, setLoanDate] = useState(new Date().toISOString().split("T")[0]);
   const [achievementQueue, setAchievementQueue] = useState<AchievementKey[]>([]);
-  const [showSaleModal, setShowSaleModal] = useState(false);
+  const showSaleModal = openModal === "sale";
   const [saleCondition, setSaleCondition] = useState<SaleCondition>("Gut");
   const [saleExtras, setSaleExtras] = useState<SaleExtra[]>([]);
   const [saleResult, setSaleResult] = useState<SaleTextResult | null>(null);
   const [saleLoading, setSaleLoading] = useState(false);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [saleToast, setSaleToast] = useState<string | null>(null);
-  const [showQrModal, setShowQrModal] = useState(false);
+  const showQrModal = openModal === "qr";
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [expansions, setExpansions] = useState<Expansion[]>([]);
-  const [showExpansionSearch, setShowExpansionSearch] = useState(false);
+  const showExpansionSearch = openModal === "expansion";
   const [expansionSearchResults, setExpansionSearchResults] = useState<BggSearchResult[]>([]);
   const [expansionSearchLoading, setExpansionSearchLoading] = useState(false);
   const [expansionManualName, setExpansionManualName] = useState("");
   const [gameStats, setGameStats] = useState<GameStats | null>(null);
   const [rulesExportToast, setRulesExportToast] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // BUG-18: Cleanup toast timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!id) { setLoading(false); return; }
-    Promise.all([
+    // BUG-13: Use Promise.allSettled for individual error handling
+    Promise.allSettled([
       getGameById(id),
       getSessionsByGame(id),
       getAllPlayers(),
@@ -68,7 +79,13 @@ function GameDetailContent() {
       getActiveLoanByGame(id),
       getExpansionsByGame(id),
     ])
-      .then(([data, sess, pl, aiOk, loan, exps]) => {
+      .then(([dataR, sessR, plR, aiR, loanR, expsR]) => {
+        const data = dataR.status === "fulfilled" ? dataR.value : undefined;
+        const sess = sessR.status === "fulfilled" ? sessR.value : [];
+        const pl = plR.status === "fulfilled" ? plR.value : [];
+        const aiOk = aiR.status === "fulfilled" ? aiR.value : false;
+        const loan = loanR.status === "fulfilled" ? loanR.value : undefined;
+        const exps = expsR.status === "fulfilled" ? expsR.value : [];
         setGame(data ?? null);
         setSessions(sess);
         setPlayers(pl);
@@ -77,7 +94,6 @@ function GameDetailContent() {
         setExpansions(exps);
         setGameStats(computeGameStats(sess, pl));
       })
-      .catch(() => setGame(null))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -133,7 +149,7 @@ function GameDetailContent() {
       loanDate,
     });
     setActiveLoan(loan);
-    setShowLoanForm(false);
+    setOpenModal(null);
     setLoanName("");
     setSaving(false);
   }
@@ -153,7 +169,7 @@ function GameDetailContent() {
 
   async function openQuickRules() {
     if (!game) return;
-    setShowQuickRules(true);
+    setOpenModal("rules");
     setQuickRulesError(null);
     if (quickRulesText) return; // already loaded in state
     
@@ -227,10 +243,12 @@ function GameDetailContent() {
     try {
       await navigator.clipboard.writeText(fullText);
       setSaleToast("Kopiert! Jetzt bei Kleinanzeigen einfügen 📋");
-      setTimeout(() => setSaleToast(null), 3000);
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => setSaleToast(null), 3000);
     } catch {
       setSaleToast("Kopieren fehlgeschlagen");
-      setTimeout(() => setSaleToast(null), 3000);
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = setTimeout(() => setSaleToast(null), 3000);
     }
   }
 
@@ -248,7 +266,7 @@ function GameDetailContent() {
 
   async function handleSearchExpansions() {
     if (!game?.bggId) return;
-    setShowExpansionSearch(true);
+    setOpenModal("expansion");
     setExpansionSearchLoading(true);
     setExpansionSearchResults([]);
     try {
@@ -413,7 +431,7 @@ function GameDetailContent() {
           {/* Quick actions */}
           <div className="mt-5 flex flex-wrap gap-2">
             <button
-              onClick={() => setShowSessionModal(true)}
+              onClick={() => setOpenModal("session")}
               className="rounded-xl bg-forest px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
             >
               Gespielt!
@@ -434,7 +452,7 @@ function GameDetailContent() {
             </Link>
             {aiAvailable && (
               <button
-                onClick={() => setShowSaleModal(true)}
+                onClick={() => setOpenModal("sale")}
                 className={`rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition-all hover:shadow-md active:scale-[0.98] ${
                   game.forSale
                     ? "bg-amber-light text-amber-dark"
@@ -446,7 +464,7 @@ function GameDetailContent() {
             )}
             {game.bggId && (
               <button
-                onClick={() => setShowQrModal(true)}
+                onClick={() => setOpenModal("qr")}
                 className="rounded-xl bg-warm-100 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
               >
                 QR Code
@@ -466,7 +484,7 @@ function GameDetailContent() {
                 Erweiterungen {expansions.length > 0 && `(${expansions.filter((e) => e.owned).length}/${expansions.length})`}
               </h3>
               <button
-                onClick={game.bggId ? handleSearchExpansions : () => setShowExpansionSearch(true)}
+                onClick={game.bggId ? handleSearchExpansions : () => setOpenModal("expansion")}
                 className="text-xs font-medium text-forest hover:text-forest-dark transition-colors"
               >
                 + Hinzufügen
@@ -520,7 +538,7 @@ function GameDetailContent() {
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-sm font-semibold text-warm-900">Erweiterung hinzufügen</h4>
                   <button
-                    onClick={() => { setShowExpansionSearch(false); setExpansionSearchResults([]); setExpansionManualName(""); }}
+                    onClick={() => { setOpenModal(null); setExpansionSearchResults([]); setExpansionManualName(""); }}
                     className="text-warm-400 hover:text-warm-600"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -623,7 +641,7 @@ function GameDetailContent() {
                   />
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setShowLoanForm(false)}
+                      onClick={() => setOpenModal(null)}
                       className="flex-1 rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
                     >
                       Abbrechen
@@ -640,7 +658,7 @@ function GameDetailContent() {
               </div>
             ) : (
               <button
-                onClick={() => setShowLoanForm(true)}
+                onClick={() => setOpenModal("loan")}
                 className="rounded-xl bg-warm-100 px-4 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
               >
                 📦 Verleihen...
@@ -825,13 +843,13 @@ function GameDetailContent() {
         <PlaySessionModal
           game={game}
           players={players}
-          onClose={() => setShowSessionModal(false)}
+          onClose={() => setOpenModal(null)}
           onSaved={async (session) => {
             const newSessions = [session, ...sessions];
             setSessions(newSessions);
             const updated = await getGameById(game.id);
             if (updated) setGame(updated);
-            setShowSessionModal(false);
+            setOpenModal(null);
             setGameStats(computeGameStats(newSessions, players));
             // Check achievements
             const newAchievements = await checkOnPlaySession(game.lastPlayed, game.mechanics);
@@ -844,7 +862,7 @@ function GameDetailContent() {
 
       {/* Quick Rules Modal (Bottom-Sheet style) */}
       {showQuickRules && game && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setShowQuickRules(false)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setOpenModal(null)}>
           <div className="mx-0 w-full max-w-lg max-h-[80vh] flex flex-col rounded-t-2xl bg-surface shadow-2xl sm:mx-4 sm:mb-auto sm:mt-auto sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
             {/* Sticky header with close button */}
             <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-warm-100 flex-shrink-0">
@@ -856,7 +874,7 @@ function GameDetailContent() {
                 </div>
               </div>
               <button
-                onClick={() => setShowQuickRules(false)}
+                onClick={() => setOpenModal(null)}
                 className="rounded-full p-2 text-warm-400 transition-colors hover:bg-warm-100 hover:text-warm-600"
                 aria-label="Schließen"
               >
@@ -890,7 +908,7 @@ function GameDetailContent() {
             <div className="px-6 pb-5 pt-3 border-t border-warm-100 flex-shrink-0 flex flex-col gap-2">
               <div className="flex gap-3">
                 <button
-                  onClick={() => setShowQuickRules(false)}
+                  onClick={() => setOpenModal(null)}
                   className="flex-1 rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
                 >
                   Schließen
@@ -995,7 +1013,7 @@ function GameDetailContent() {
 
       {/* Sale Modal */}
       {showSaleModal && game && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setShowSaleModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setOpenModal(null)}>
           <div className="mx-0 w-full max-w-lg max-h-[85vh] flex flex-col rounded-t-2xl bg-surface shadow-2xl sm:mx-4 sm:mb-auto sm:mt-auto sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-warm-100 flex-shrink-0">
               <div className="flex items-center gap-2">
@@ -1006,7 +1024,7 @@ function GameDetailContent() {
                 </div>
               </div>
               <button
-                onClick={() => setShowSaleModal(false)}
+                onClick={() => setOpenModal(null)}
                 className="rounded-full p-2 text-warm-400 transition-colors hover:bg-warm-100 hover:text-warm-600"
                 aria-label="Schließen"
               >
@@ -1118,7 +1136,7 @@ function GameDetailContent() {
 
             <div className="px-6 pb-5 pt-3 border-t border-warm-100 flex-shrink-0">
               <button
-                onClick={() => setShowSaleModal(false)}
+                onClick={() => setOpenModal(null)}
                 className="w-full rounded-xl bg-warm-100 px-4 py-2.5 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200"
               >
                 Schließen
@@ -1130,7 +1148,7 @@ function GameDetailContent() {
 
       {/* QR Code Modal */}
       {showQrModal && game?.bggId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setShowQrModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-warm-900/60 backdrop-blur-sm" onClick={() => setOpenModal(null)}>
           <div className="mx-4 w-full max-w-sm rounded-2xl bg-surface p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -1138,7 +1156,7 @@ function GameDetailContent() {
                 <p className="text-sm text-warm-500">{game.name} auf BGG</p>
               </div>
               <button
-                onClick={() => setShowQrModal(false)}
+                onClick={() => setOpenModal(null)}
                 className="rounded-full p-2 text-warm-400 transition-colors hover:bg-warm-100 hover:text-warm-600"
                 aria-label="Schließen"
               >

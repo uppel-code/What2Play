@@ -28,7 +28,7 @@ export default function RootLayout({
           <Onboarding />
           <SwipeBack />
           <BottomTabBar />
-          <main className="mx-auto max-w-6xl px-4 pb-28 pt-4 sm:px-6 sm:pb-10 sm:pt-8">
+          <main className="mx-auto max-w-6xl px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-10 sm:pt-8">
             {children}
           </main>
         </ThemeProvider>

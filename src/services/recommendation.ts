@@ -118,7 +118,8 @@ function scoreGame(game: Game, params: TodayPlayParams): ScoredGame {
   // Normalize to 0-100 scale
   const maxPossible = WEIGHTS.playerFit + WEIGHTS.timeFit + WEIGHTS.complexityFit +
     WEIGHTS.favoriteBonus + WEIGHTS.lastPlayedBonus + WEIGHTS.tagBonus + WEIGHTS.moodBonus;
-  const score = Math.round((rawScore / maxPossible) * 100);
+  // BUG-25: Clamp score to 0-100
+  const score = Math.min(100, Math.round((rawScore / maxPossible) * 100));
 
   return { ...game, score, scoreBreakdown: breakdown };
 }

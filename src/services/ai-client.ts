@@ -210,8 +210,12 @@ async function callGemini(apiKey: string, base64Image: string): Promise<string> 
   if (status === 429) throw new Error("AI_RATE_LIMIT");
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
 
-  const parsed = JSON.parse(data);
-  return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: Gemini returned invalid JSON");
+  }
 }
 
 async function callOpenAI(apiKey: string, base64Image: string): Promise<string> {
@@ -243,8 +247,12 @@ async function callOpenAI(apiKey: string, base64Image: string): Promise<string> 
   if (status === 429) throw new Error("AI_RATE_LIMIT");
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
 
-  const parsed = JSON.parse(data);
-  return parsed?.choices?.[0]?.message?.content || "[]";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.choices?.[0]?.message?.content || "[]";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: OpenAI returned invalid JSON");
+  }
 }
 
 async function callClaude(apiKey: string, base64Image: string): Promise<string> {
@@ -281,8 +289,12 @@ async function callClaude(apiKey: string, base64Image: string): Promise<string> 
   if (status === 429) throw new Error("AI_RATE_LIMIT");
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
 
-  const parsed = JSON.parse(data);
-  return parsed?.content?.[0]?.text || "[]";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.content?.[0]?.text || "[]";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: Claude returned invalid JSON");
+  }
 }
 
 // ─── Verification (2-Step AI Check) ───
@@ -363,8 +375,12 @@ async function callGeminiText(apiKey: string, prompt: string): Promise<string> {
   const { status, data } = await aiPost(url, body, {});
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
 
-  const parsed = JSON.parse(data);
-  return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: Gemini returned invalid JSON");
+  }
 }
 
 async function callOpenAIText(apiKey: string, prompt: string): Promise<string> {
@@ -380,8 +396,12 @@ async function callOpenAIText(apiKey: string, prompt: string): Promise<string> {
   const { status, data } = await aiPost(url, body, { Authorization: `Bearer ${apiKey}` });
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
 
-  const parsed = JSON.parse(data);
-  return parsed?.choices?.[0]?.message?.content || "{}";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.choices?.[0]?.message?.content || "{}";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: OpenAI returned invalid JSON");
+  }
 }
 
 async function callClaudeText(apiKey: string, prompt: string): Promise<string> {
@@ -401,8 +421,12 @@ async function callClaudeText(apiKey: string, prompt: string): Promise<string> {
   });
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
 
-  const parsed = JSON.parse(data);
-  return parsed?.content?.[0]?.text || "{}";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.content?.[0]?.text || "{}";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: Claude returned invalid JSON");
+  }
 }
 
 function parseVerificationResponse(text: string): VerificationResult {
@@ -609,8 +633,12 @@ async function callGeminiChat(apiKey: string, systemPrompt: string, history: Rul
   if (status === 429) throw new Error("AI_RATE_LIMIT");
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
 
-  const parsed = JSON.parse(data);
-  return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: Gemini returned invalid JSON");
+  }
 }
 
 async function callOpenAIChat(apiKey: string, systemPrompt: string, history: RuleMessage[], question: string): Promise<string> {
@@ -634,8 +662,12 @@ async function callOpenAIChat(apiKey: string, systemPrompt: string, history: Rul
   if (status === 429) throw new Error("AI_RATE_LIMIT");
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
 
-  const parsed = JSON.parse(data);
-  return parsed?.choices?.[0]?.message?.content || "";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.choices?.[0]?.message?.content || "";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: OpenAI returned invalid JSON");
+  }
 }
 
 async function callClaudeChat(apiKey: string, systemPrompt: string, history: RuleMessage[], question: string): Promise<string> {
@@ -663,8 +695,12 @@ async function callClaudeChat(apiKey: string, systemPrompt: string, history: Rul
   if (status === 429) throw new Error("AI_RATE_LIMIT");
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
 
-  const parsed = JSON.parse(data);
-  return parsed?.content?.[0]?.text || "";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.content?.[0]?.text || "";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: Claude returned invalid JSON");
+  }
 }
 
 // ─── Barcode/EAN Recognition ───
@@ -725,8 +761,12 @@ async function callGeminiBarcode(apiKey: string, base64Image: string): Promise<s
   };
   const { status, data } = await aiPost(url, body, {});
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
-  const parsed = JSON.parse(data);
-  return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: Gemini returned invalid JSON");
+  }
 }
 
 async function callOpenAIBarcode(apiKey: string, base64Image: string): Promise<string> {
@@ -745,8 +785,12 @@ async function callOpenAIBarcode(apiKey: string, base64Image: string): Promise<s
   };
   const { status, data } = await aiPost(url, body, { Authorization: `Bearer ${apiKey}` });
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
-  const parsed = JSON.parse(data);
-  return parsed?.choices?.[0]?.message?.content || "{}";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.choices?.[0]?.message?.content || "{}";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: OpenAI returned invalid JSON");
+  }
 }
 
 async function callClaudeBarcode(apiKey: string, base64Image: string): Promise<string> {
@@ -768,8 +812,12 @@ async function callClaudeBarcode(apiKey: string, base64Image: string): Promise<s
     "anthropic-dangerous-direct-browser-access": "true",
   });
   if (status !== 200) throw new Error(`AI_ERROR_${status}`);
-  const parsed = JSON.parse(data);
-  return parsed?.content?.[0]?.text || "{}";
+  try {
+    const parsed = JSON.parse(data);
+    return parsed?.content?.[0]?.text || "{}";
+  } catch {
+    throw new Error("AI_INVALID_RESPONSE: Claude returned invalid JSON");
+  }
 }
 
 function parseBarcodeResponse(text: string): BarcodeResult {
@@ -815,14 +863,7 @@ function parseAiResponse(text: string): RecognizedGame[] {
           : "medium") as "high" | "medium" | "low",
       }));
   } catch {
-    // Try to extract game names even from non-JSON response
-    const names = text.match(/"([^"]+)"/g);
-    if (names && names.length > 0) {
-      return names
-        .map((n) => n.replace(/"/g, ""))
-        .filter((n) => n.length > 2 && !["name", "confidence", "high", "medium", "low", "bggId"].includes(n))
-        .map((name) => ({ name, bggId: null, confidence: "low" as const }));
-    }
+    // BUG-12: Return empty array instead of fragile string extraction
     return [];
   }
 }

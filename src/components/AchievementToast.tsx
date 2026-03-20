@@ -33,7 +33,7 @@ export default function AchievementToast({ achievementKey, onDone }: Achievement
         visible ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"
       }`}
     >
-      <div className="flex items-center gap-3 rounded-2xl bg-warm-900 px-5 py-3 shadow-lg">
+      <div className="flex items-center gap-3 rounded-2xl bg-warm-900 dark:bg-warm-800 px-5 py-3 shadow-lg">
         <span className="text-2xl">{def.icon}</span>
         <div>
           <div className="text-xs font-medium text-amber-400">Achievement freigeschaltet!</div>

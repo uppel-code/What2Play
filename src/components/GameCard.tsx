@@ -157,7 +157,7 @@ export default function GameCard({ game, onDelete, activeLoan, expansionCount }:
           href={`/game?id=${game.id}`}
           onClick={handleClick}
           draggable={false}
-          className="card-hover group block overflow-hidden rounded-2xl border border-warm-200/80 bg-surface"
+          className="card-hover group block overflow-hidden rounded-2xl border border-warm-200/80 bg-surface dark:border-warm-700/30"
         >
           <div className="relative aspect-[4/3] overflow-hidden bg-warm-100">
             {game.thumbnail ? (

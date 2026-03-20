@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface BarData {
   label: string;
@@ -21,6 +21,16 @@ export default function BarChart({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // BUG-20: Re-render on dark mode change
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    setIsDarkMode(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsDarkMode(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -82,7 +92,7 @@ export default function BarChart({
       const truncated = truncateText(ctx, bar.label, maxLabelWidth);
       ctx.fillText(truncated, x + barWidth / 2, height - 4);
     }
-  }, [bars, height]);
+  }, [bars, height, isDarkMode]);
 
   return (
     <div ref={containerRef} className={className}>

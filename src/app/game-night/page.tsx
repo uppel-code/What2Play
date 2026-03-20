@@ -114,7 +114,11 @@ export default function GameNightPage() {
   );
 
   const generateShareText = (night: GameNight): string => {
+    // BUG-27: Defensive date parsing with fallback
     const d = new Date(night.date);
+    if (isNaN(d.getTime())) {
+      return `Spieleabend "${night.name}" — Folgende Spiele sind dabei: ${night.gameIds.map((id) => games.find((g) => g.id === id)?.name).filter(Boolean).join(", ") || "noch keine Spiele"}`;
+    }
     const dateStr = d.toLocaleDateString("de-DE", {
       weekday: "long",
       day: "numeric",
@@ -568,7 +572,7 @@ export default function GameNightPage() {
         <div className="mt-6 space-y-3">
           {gameNights.map((night) => {
             const nightDate = new Date(night.date);
-            const isUpcoming = nightDate >= new Date();
+            const isUpcoming = !isNaN(nightDate.getTime()) && nightDate >= new Date();
             const nightGames = games.filter((g) =>
               night.gameIds.includes(g.id)
             );

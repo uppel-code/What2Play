@@ -135,10 +135,10 @@ export default function CollectionPage() {
         if (game.minAge > filters.minAge) return false;
       }
       if (filters.tags && filters.tags.length > 0) {
-        if (!filters.tags.some((tag) => game.tags.includes(tag))) return false;
+        if (!filters.tags.some((tag) => (game.tags || []).includes(tag))) return false;
       }
       if (filters.mechanics && filters.mechanics.length > 0) {
-        if (!filters.mechanics.some((m) => game.mechanics.includes(m))) return false;
+        if (!filters.mechanics.some((m) => (game.mechanics || []).includes(m))) return false;
       }
       if (filters.neverPlayed) {
         if (game.lastPlayed != null) return false;

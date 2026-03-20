@@ -29,7 +29,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
   ].filter(Boolean).length;
 
   return (
-    <div className="rounded-2xl border border-warm-200/80 bg-surface p-4">
+    <div className="rounded-2xl border border-warm-200/80 bg-surface dark:border-warm-700/30 p-4">
       {/* Search */}
       <div className="flex gap-2">
         <div className="relative flex-1">
@@ -171,7 +171,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
                         : [...currentTags, tag.value];
                       onChange({ ...filters, tags: newTags.length > 0 ? newTags : undefined });
                     }}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                    className={`min-h-[44px] rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
                       isSelected
                         ? "bg-forest text-white"
                         : "bg-warm-50 text-warm-600 hover:bg-warm-100"
@@ -200,7 +200,7 @@ export default function FilterBar({ filters, onChange }: FilterBarProps) {
                         : [...current, mech.value];
                       onChange({ ...filters, mechanics: next.length > 0 ? next : undefined });
                     }}
-                    className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                    className={`min-h-[44px] rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
                       isSelected
                         ? "bg-forest text-white"
                         : "bg-warm-50 text-warm-600 hover:bg-warm-100"

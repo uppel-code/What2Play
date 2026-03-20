@@ -211,7 +211,7 @@ describe("db-client", () => {
       const group = await createPlayGroup("Group 1", [player.id]);
 
       const result = await deletePlayer(player.id);
-      expect(result).toBe(true);
+      expect(result.deleted).toBe(true);
 
       const groups = await getAllPlayGroups();
       expect(groups[0].playerIds).toEqual([]);

@@ -14,16 +14,22 @@ const SUGGESTION_CHIPS = [
 
 export default function RegelGuru({ game }: { game: Game }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [allMessages, setAllMessages] = useState<ChatMessage[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const MESSAGE_LIMIT = 50;
 
-  // Load chat history on mount
+  // BUG-22: Load chat history with pagination
   useEffect(() => {
-    getChatMessages(game.id).then(setMessages);
+    getChatMessages(game.id).then((msgs) => {
+      setAllMessages(msgs);
+      setMessages(msgs.slice(-MESSAGE_LIMIT));
+    });
   }, [game.id]);
 
   // Auto-scroll to bottom when messages change
@@ -188,6 +194,15 @@ export default function RegelGuru({ game }: { game: Game }) {
                 <p className="py-8 text-center text-sm text-warm-400">
                   Stelle eine Frage zu den Regeln von {game.name}
                 </p>
+              )}
+
+              {!showAll && allMessages.length > MESSAGE_LIMIT && (
+                <button
+                  onClick={() => { setMessages(allMessages); setShowAll(true); }}
+                  className="mb-3 w-full rounded-xl bg-warm-100 py-2 text-xs font-medium text-warm-500 hover:bg-warm-200"
+                >
+                  Ältere Nachrichten laden ({allMessages.length - MESSAGE_LIMIT} weitere)
+                </button>
               )}
 
               {messages.map((msg) => (

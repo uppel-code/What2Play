@@ -135,6 +135,49 @@ export function parseBackup(jsonString: string): BackupData {
 }
 
 /**
+ * BUG-23: Validate referential integrity of backup data.
+ * Returns sanitized data with invalid references removed.
+ */
+export function validateBackupIntegrity(data: BackupData): { data: BackupData; warnings: string[] } {
+  const warnings: string[] = [];
+  const gameIds = new Set(data.games.map((g) => g.id));
+  const playerIds = new Set(data.players.map((p) => p.id));
+
+  // Validate playSessions reference valid gameIds
+  const validSessions = data.playSessions.filter((s) => {
+    if (!gameIds.has(s.gameId)) {
+      warnings.push(`Session ${s.id}: ungültige gameId ${s.gameId} übersprungen`);
+      return false;
+    }
+    if (s.winnerId != null && !playerIds.has(s.winnerId)) {
+      warnings.push(`Session ${s.id}: ungültige winnerId ${s.winnerId} (auf null gesetzt)`);
+      s.winnerId = null;
+    }
+    return true;
+  });
+
+  // Validate loans reference valid gameIds
+  const validLoans = data.loans.filter((l) => {
+    if (!gameIds.has(l.gameId)) {
+      warnings.push(`Loan ${l.id}: ungültige gameId ${l.gameId} übersprungen`);
+      return false;
+    }
+    return true;
+  });
+
+  // Validate playGroups reference valid playerIds
+  const validGroups = data.playGroups.map((g) => ({
+    ...g,
+    playerIds: g.playerIds.filter((pid) => playerIds.has(pid)),
+  }));
+
+  return {
+    data: { ...data, playSessions: validSessions, loans: validLoans, playGroups: validGroups },
+    warnings,
+  };
+}
+
+/**
  * Get preview info from backup data
  */
 export function getBackupPreview(data: BackupData): BackupPreview {

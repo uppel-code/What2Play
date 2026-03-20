@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type { Game } from "@/types/game";
 import { getAllGames, deleteGame } from "@/lib/db-client";
@@ -13,6 +13,8 @@ export default function ManageCollectionPage() {
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "date">("name");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 20;
 
   const loadGames = useCallback(async () => {
     try {
@@ -29,12 +31,19 @@ export default function ManageCollectionPage() {
     loadGames();
   }, [loadGames]);
 
-  const filteredGames = games
-    .filter((g) => g.name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => {
-      if (sortBy === "name") return a.name.localeCompare(b.name);
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+  // BUG-19: Memoize filteredGames
+  const filteredGames = useMemo(() =>
+    games
+      .filter((g) => g.name.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => {
+        if (sortBy === "name") return a.name.localeCompare(b.name);
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }),
+    [games, search, sortBy]);
+
+  // BUG-10: Paginated view
+  const totalPages = Math.ceil(filteredGames.length / PAGE_SIZE);
+  const paginatedGames = filteredGames.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   function toggleSelect(id: number) {
     setSelected((prev) => {
@@ -112,7 +121,7 @@ export default function ManageCollectionPage() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               placeholder="Suchen..."
               className="w-full rounded-xl border border-warm-200 bg-surface py-2 pl-9 pr-3 text-sm text-warm-800 placeholder:text-warm-400 focus:border-forest focus:outline-none focus:ring-2 focus:ring-forest/10 sm:w-64"
             />
@@ -175,12 +184,12 @@ export default function ManageCollectionPage() {
 
         {/* Games list */}
         <div className="max-h-[60vh] overflow-y-auto">
-          {filteredGames.length === 0 ? (
+          {paginatedGames.length === 0 ? (
             <div className="p-8 text-center text-sm text-warm-500">
               {search ? "Keine Spiele gefunden" : "Noch keine Spiele in der Sammlung"}
             </div>
           ) : (
-            filteredGames.map((game) => (
+            paginatedGames.map((game) => (
               <div
                 key={game.id}
                 className={`flex items-center gap-3 border-b border-warm-100 px-4 py-3 transition-colors last:border-b-0 ${
@@ -189,7 +198,7 @@ export default function ManageCollectionPage() {
               >
                 <button
                   onClick={() => toggleSelect(game.id)}
-                  className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md border-2 transition-all ${
+                  className={`flex h-[44px] w-[44px] flex-shrink-0 items-center justify-center rounded-md border-2 transition-all ${
                     selected.has(game.id)
                       ? "border-coral bg-coral text-white"
                       : "border-warm-300 bg-surface"
@@ -249,6 +258,29 @@ export default function ManageCollectionPage() {
           )}
         </div>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="min-h-[44px] min-w-[44px] rounded-xl bg-warm-100 px-3 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200 disabled:opacity-40"
+          >
+            ← Zurück
+          </button>
+          <span className="text-sm text-warm-500">
+            Seite {page + 1} von {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="min-h-[44px] min-w-[44px] rounded-xl bg-warm-100 px-3 py-2 text-sm font-medium text-warm-600 transition-colors hover:bg-warm-200 disabled:opacity-40"
+          >
+            Weiter →
+          </button>
+        </div>
+      )}
 
       {/* Tip */}
       <p className="mt-4 text-center text-xs text-warm-400">
