@@ -1662,14 +1662,8 @@ function LiveScannerTab() {
       });
 
       streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
+      // Show video element first, then attach stream in effect
       setScanning(true);
-      startScanLoop();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
       if (msg.includes("NotAllowed") || msg.includes("Permission")) {
@@ -1681,6 +1675,23 @@ function LiveScannerTab() {
       }
     }
   }
+
+  // ─── Attach stream to video element once it's rendered ───
+
+  useEffect(() => {
+    if (!scanning || !streamRef.current) return;
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.srcObject = streamRef.current;
+    video.play().then(() => {
+      startScanLoop();
+    }).catch(() => {
+      setCameraError("Video konnte nicht gestartet werden.");
+      stopCamera();
+    });
+  }, [scanning]);
 
   // ─── Stop camera stream ───
 
