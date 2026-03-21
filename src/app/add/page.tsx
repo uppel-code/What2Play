@@ -5,12 +5,10 @@ import { useRouter } from "next/navigation";
 import type { BggGameData, BggSearchResult, AchievementKey } from "@/types/game";
 import { createGame, getGameByBggId } from "@/lib/db-client";
 import { searchBgg as bggSearch, fetchBggThing, fetchBggCollection, isBggConfigured } from "@/services/bgg-client";
-import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch, getGameLanguage, recognizeBarcodeFromImage, lookupGameByEan } from "@/services/ai-client";
+import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch, getGameLanguage, lookupGameByEan } from "@/services/ai-client";
 import type { RecognizedGame, VerificationResult } from "@/services/ai-client";
 import { checkOnGameAdd, checkOnPhotoScan } from "@/services/achievements";
 import AchievementToast from "@/components/AchievementToast";
-import { Capacitor } from "@capacitor/core";
-import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
 type ActiveTab = "bgg-search" | "bgg-collection" | "bgg-bulk" | "photo-scan" | "barcode-scan" | "manual";
 
@@ -1591,125 +1589,226 @@ function LiveScannerTab() {
   const [scannedGames, setScannedGames] = useState<ScannedGame[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [achievementQueue, setAchievementQueue] = useState<AchievementKey[]>([]);
+  const [lastDetectedEan, setLastDetectedEan] = useState<string | null>(null);
 
   const scannedEansRef = useRef<Set<string>>(new Set());
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanLoopRef = useRef<number | null>(null);
+  const processingRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const zxingRef = useRef<typeof import("zxing-wasm/reader") | null>(null);
 
-  // ─── Decode barcode from base64 image using zxing-wasm ───
+  // ─── Preload zxing-wasm module ───
 
-  async function decodeBarcode(base64: string): Promise<string | null> {
+  useEffect(() => {
+    import("zxing-wasm/reader").then((mod) => {
+      zxingRef.current = mod;
+    }).catch(() => {
+      // Will fall back to loading on demand
+    });
+  }, []);
+
+  // ─── Reusable AudioContext for beep sounds ───
+
+  function getAudioCtx(): AudioContext | null {
     try {
-      const { readBarcodes } = await import("zxing-wasm/reader");
-      const blob = await fetch(`data:image/jpeg;base64,${base64}`).then((r) => r.blob());
-      const results = await readBarcodes(blob, { formats: ["EAN13", "EAN8", "UPCA"] });
-      const valid = results.filter((r) => r.isValid && r.text.trim());
-      if (valid.length > 0) {
-        return valid[0].text.trim();
+      if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+        audioCtxRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
       }
+      return audioCtxRef.current;
     } catch {
-      // zxing-wasm failed (e.g. WASM load error), fall through to AI
+      return null;
     }
-    return null;
   }
 
-  // ─── Analyze photo: JS barcode lib → AI fallback ───
+  function playBeepSound() {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 1200;
+      osc.type = "sine";
+      gain.gain.value = 0.3;
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.stop(ctx.currentTime + 0.15);
+    } catch {
+      // Audio not available
+    }
+  }
 
-  async function analyzePhoto(base64: string) {
+  // ─── Start camera stream ───
+
+  async function startCamera() {
+    setCameraError(null);
     setError(null);
-    setAnalyzing(true);
 
     try {
-      // Step 1: Try zxing-wasm JS barcode detection
-      const ean = await decodeBarcode(base64);
-      if (ean) {
-        if (!scannedEansRef.current.has(ean)) {
-          scannedEansRef.current.add(ean);
-          playBeep();
-          triggerHaptic();
-          handleEanDetected(ean);
-        } else {
-          setError("Dieser Barcode wurde bereits gescannt.");
-        }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      setScanning(true);
+      startScanLoop();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unbekannter Fehler";
+      if (msg.includes("NotAllowed") || msg.includes("Permission")) {
+        setCameraError("Kamera-Zugriff verweigert. Bitte erlaube den Kamera-Zugriff in den Einstellungen.");
+      } else if (msg.includes("NotFound") || msg.includes("DevicesNotFound")) {
+        setCameraError("Keine Kamera gefunden.");
+      } else {
+        setCameraError(`Kamera-Fehler: ${msg}`);
+      }
+    }
+  }
+
+  // ─── Stop camera stream ───
+
+  function stopCamera() {
+    if (scanLoopRef.current) {
+      cancelAnimationFrame(scanLoopRef.current);
+      scanLoopRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setScanning(false);
+  }
+
+  // ─── Cleanup on unmount ───
+
+  useEffect(() => {
+    return () => {
+      if (scanLoopRef.current) cancelAnimationFrame(scanLoopRef.current);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+        audioCtxRef.current.close().catch(() => {});
+      }
+    };
+  }, []);
+
+  // ─── Continuous scan loop: capture frame → decode barcode ───
+
+  function startScanLoop() {
+    const SCAN_INTERVAL_MS = 250; // Scan ~4 frames/sec
+    let lastScanTime = 0;
+
+    function loop(timestamp: number) {
+      if (!streamRef.current || !videoRef.current || !canvasRef.current) return;
+
+      // Throttle to SCAN_INTERVAL_MS
+      if (timestamp - lastScanTime < SCAN_INTERVAL_MS) {
+        scanLoopRef.current = requestAnimationFrame(loop);
+        return;
+      }
+      lastScanTime = timestamp;
+
+      // Skip if still processing previous frame
+      if (processingRef.current) {
+        scanLoopRef.current = requestAnimationFrame(loop);
         return;
       }
 
-      // Step 2: AI fallback
-      try {
-        const result = await recognizeBarcodeFromImage(base64);
-        if (result.barcode) {
-          if (!scannedEansRef.current.has(result.barcode)) {
-            scannedEansRef.current.add(result.barcode);
-            playBeep();
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      if (video.readyState < video.HAVE_ENOUGH_DATA) {
+        scanLoopRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      // Draw video frame to canvas
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        scanLoopRef.current = requestAnimationFrame(loop);
+        return;
+      }
+      ctx.drawImage(video, 0, 0);
+
+      // Decode barcode from canvas
+      processingRef.current = true;
+      decodeFromCanvas(canvas)
+        .then((ean) => {
+          if (ean && !scannedEansRef.current.has(ean)) {
+            scannedEansRef.current.add(ean);
+            setLastDetectedEan(ean);
+            playBeepSound();
             triggerHaptic();
-            handleEanDetected(result.barcode);
+            handleEanDetected(ean);
+            // Brief pause after successful scan to avoid rapid-fire
+            setTimeout(() => {
+              processingRef.current = false;
+            }, 800);
           } else {
-            setError("Dieser Barcode wurde bereits gescannt.");
+            processingRef.current = false;
           }
-        } else if (result.gameName) {
-          // AI recognized game but not barcode — search BGG directly
-          const bggResults = await bggSearch(result.gameName);
-          if (bggResults.length > 0) {
-            const data = await fetchBggThing(bggResults[0].bggId);
-            if (data) {
-              const fakeEan = `manual-${Date.now()}`;
-              const existing = await getGameByBggId(data.bggId);
-              setScannedGames((prev) => [
-                { ean: fakeEan, name: data.name, bggId: data.bggId, thumbnail: data.thumbnail, bggData: data, status: existing ? "duplicate" : "found", target: "collection" },
-                ...prev,
-              ]);
-              playBeep();
-            }
-          }
-        } else {
-          setError("Kein Barcode erkannt. Versuche ein deutlicheres Foto.");
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "";
-        if (msg === "AI_NOT_CONFIGURED") {
-          setError("Kein Barcode erkannt und AI ist nicht konfiguriert. Bitte richte in den Einstellungen einen AI-Provider ein.");
-        } else {
-          setError("Kein Barcode erkannt. Versuche ein deutlicheres Foto.");
-        }
-      }
-    } finally {
-      setAnalyzing(false);
-    }
-  }
-
-  // ─── Scan: Capacitor Camera on native, file input on web ───
-
-  async function scanBarcode() {
-    setError(null);
-
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const photo = await Camera.getPhoto({
-          resultType: CameraResultType.Base64,
-          source: CameraSource.Camera,
-          quality: 80,
-          width: 1280,
+        })
+        .catch(() => {
+          processingRef.current = false;
         });
-        if (photo.base64String) {
-          await analyzePhoto(photo.base64String);
-        }
-      } catch {
-        // User cancelled camera
-      }
-    } else {
-      // On web: trigger file input
-      fileRef.current?.click();
+
+      scanLoopRef.current = requestAnimationFrame(loop);
+    }
+
+    scanLoopRef.current = requestAnimationFrame(loop);
+  }
+
+  // ─── Decode barcode from canvas using zxing-wasm ───
+
+  async function decodeFromCanvas(canvas: HTMLCanvasElement): Promise<string | null> {
+    try {
+      const mod = zxingRef.current ?? (await import("zxing-wasm/reader"));
+      if (!zxingRef.current) zxingRef.current = mod;
+
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", 0.8)
+      );
+      if (!blob) return null;
+
+      const results = await mod.readBarcodes(blob, {
+        formats: ["EAN13", "EAN8", "UPCA", "UPCE"],
+      });
+      const valid = results.filter((r) => r.isValid && r.text.trim());
+      return valid.length > 0 ? valid[0].text.trim() : null;
+    } catch {
+      return null;
     }
   }
 
-  async function handleFileInput(file: File) {
-    const base64 = await compressImage(file);
-    await analyzePhoto(base64);
-  }
+  // ─── Handle detected EAN: BGG search → AI fallback ───
 
   async function handleEanDetected(ean: string) {
-    // Add placeholder entry
     const newGame: ScannedGame = {
       ean,
       name: "",
@@ -1727,7 +1826,6 @@ function LiveScannerTab() {
       if (bggResults.length > 0) {
         const data = await fetchBggThing(bggResults[0].bggId);
         if (data) {
-          // Check duplicate
           const existing = await getGameByBggId(data.bggId);
           setScannedGames((prev) =>
             prev.map((g) =>
@@ -1762,7 +1860,6 @@ function LiveScannerTab() {
             return;
           }
         }
-        // AI found name but BGG didn't match
         setScannedGames((prev) =>
           prev.map((g) => (g.ean === ean ? { ...g, name: aiResult.gameName!, status: "not_found" } : g))
         );
@@ -1843,7 +1940,6 @@ function LiveScannerTab() {
 
     setSaving(false);
 
-    // If only one game added, navigate to it
     if (addedCount === 1 && gamesToAdd.length === 1) {
       const addedGame = await getGameByBggId(gamesToAdd[0].bggData!.bggId);
       if (addedGame) {
@@ -1856,54 +1952,89 @@ function LiveScannerTab() {
 
   return (
     <div className="mt-5 space-y-4">
-      {/* Scanner area */}
+      {/* Live camera viewfinder */}
       <div className="rounded-2xl border border-warm-200/80 bg-surface overflow-hidden">
-        <div className="p-5">
-          <p className="text-sm text-warm-500 mb-4">
-            Barcode fotografieren und das Spiel wird automatisch erkannt. Scanne mehrere Spiele hintereinander!
-          </p>
+        {!scanning ? (
+          <div className="p-5">
+            <p className="text-sm text-warm-500 mb-4">
+              Halte den Barcode vor die Kamera — das Spiel wird automatisch erkannt. Scanne beliebig viele Spiele hintereinander!
+            </p>
 
-          {/* Hidden file input for web fallback */}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleFileInput(file);
-              if (e.target) e.target.value = "";
-            }}
-            className="hidden"
-          />
-
-          <button
-            onClick={scanBarcode}
-            disabled={analyzing}
-            className="w-full rounded-xl bg-forest px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md disabled:opacity-50 active:scale-[0.98]"
-          >
-            {analyzing ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                Barcode wird analysiert...
-              </span>
-            ) : (
+            <button
+              onClick={startCamera}
+              className="w-full rounded-xl bg-forest px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-forest-dark hover:shadow-md active:scale-[0.98]"
+            >
               <span className="flex items-center justify-center gap-2">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                {scannedGames.length > 0 ? "Nochmal scannen" : "Barcode scannen"}
+                Scanner starten
               </span>
-            )}
-          </button>
+            </button>
 
-          {scannedGames.length > 0 && (
-            <p className="mt-2 text-xs font-medium text-forest text-center">
-              {scannedGames.length} Spiel{scannedGames.length !== 1 ? "e" : ""} gescannt
-            </p>
-          )}
-        </div>
+            {cameraError && (
+              <div className="mt-3 rounded-xl bg-coral-light px-4 py-2.5 text-sm text-coral">
+                {cameraError}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="relative">
+            {/* Video feed */}
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              className="w-full aspect-[4/3] object-cover bg-black"
+            />
+
+            {/* Scan overlay with targeting lines */}
+            <div className="absolute inset-0 pointer-events-none">
+              {/* Semi-transparent overlay with cutout */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="relative w-3/4 aspect-[3/1]">
+                  {/* Corner brackets */}
+                  <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-forest rounded-tl" />
+                  <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-forest rounded-tr" />
+                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-forest rounded-bl" />
+                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-forest rounded-br" />
+                  {/* Scanning line animation */}
+                  <div className="absolute inset-x-2 top-1/2 h-0.5 bg-forest/60 animate-pulse" />
+                </div>
+              </div>
+
+              {/* Last detected EAN flash */}
+              {lastDetectedEan && (
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-forest/90 text-white text-xs font-mono px-3 py-1.5 rounded-full backdrop-blur-sm">
+                  ✓ {lastDetectedEan}
+                </div>
+              )}
+            </div>
+
+            {/* Stop button */}
+            <div className="absolute top-3 right-3">
+              <button
+                onClick={stopCamera}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Scan counter */}
+            {scannedGames.length > 0 && (
+              <div className="absolute top-3 left-3 bg-forest/90 text-white text-xs font-semibold px-3 py-1.5 rounded-full backdrop-blur-sm">
+                {scannedGames.length} gescannt
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Hidden canvas for frame capture */}
+        <canvas ref={canvasRef} className="hidden" />
       </div>
 
       {error && (

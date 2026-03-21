@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-const EDGE_ZONE = 25; // px from left edge to start swipe
+const EDGE_ZONE = 30; // px from left edge to start swipe
 const MIN_SWIPE_DISTANCE = 80; // px to trigger navigation
-const MAX_INDICATOR = 60; // max visual indicator width
+const MAX_INDICATOR = 120; // max visual indicator width (must be >= MIN_SWIPE_DISTANCE)
 
 export default function SwipeBack() {
   const router = useRouter();
