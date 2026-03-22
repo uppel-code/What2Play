@@ -1,20 +1,36 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
 const EDGE_ZONE = 30; // px from left edge to start swipe
 const MIN_SWIPE_DISTANCE = 80; // px to trigger navigation
 const MAX_INDICATOR = 120; // max visual indicator width (must be >= MIN_SWIPE_DISTANCE)
 
+// Pages that are "root" level — swipe-back should not go beyond these
+const ROOT_PAGES = new Set(["/", "/today", "/add", "/achievements", "/settings", "/manage", "/groups"]);
+
 export default function SwipeBack() {
   const router = useRouter();
+  const pathname = usePathname();
+  const navHistoryRef = useRef<string[]>([]);
   const touchRef = useRef<{ startX: number; startY: number; started: boolean }>({
     startX: 0,
     startY: 0,
     started: false,
   });
   const [swipeProgress, setSwipeProgress] = useState(0);
+
+  // Track navigation history ourselves since browser history API is limited
+  useEffect(() => {
+    const history = navHistoryRef.current;
+    // Avoid duplicates when pathname hasn't changed (re-renders)
+    if (history[history.length - 1] !== pathname) {
+      history.push(pathname);
+      // Keep history bounded
+      if (history.length > 50) history.shift();
+    }
+  }, [pathname]);
 
   const handleTouchStart = useCallback((e: TouchEvent) => {
     const touch = e.touches[0];
@@ -42,11 +58,21 @@ export default function SwipeBack() {
   const handleTouchEnd = useCallback(() => {
     if (!touchRef.current.started) return;
     if (swipeProgress >= MIN_SWIPE_DISTANCE) {
-      router.back();
+      // Don't navigate back from root pages — would exit the app
+      if (ROOT_PAGES.has(pathname)) {
+        // Already on a root page, nowhere to go back
+      } else if (navHistoryRef.current.length > 1) {
+        // Pop current page from our history
+        navHistoryRef.current.pop();
+        router.back();
+      } else {
+        // No history (e.g. deep link) — go home instead of exiting the app
+        router.push("/");
+      }
     }
     touchRef.current.started = false;
     setSwipeProgress(0);
-  }, [swipeProgress, router]);
+  }, [swipeProgress, router, pathname]);
 
   useEffect(() => {
     document.addEventListener("touchstart", handleTouchStart, { passive: true });
