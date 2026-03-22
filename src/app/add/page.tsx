@@ -1729,22 +1729,28 @@ function LiveScannerTab() {
   }, []);
 
   // ─── Continuous scan loop: capture frame → decode barcode ───
+  //
+  // Performance optimizations:
+  // - Scan only the center strip (where the barcode targeting area is)
+  // - Downscale to 640px wide (enough for barcode, much faster than full HD)
+  // - Pass ImageData directly to zxing (no Blob/JPEG encoding roundtrip)
+  // - Scan at ~8fps for fast recognition
+
+  const SCAN_CANVAS_WIDTH = 640;
 
   function startScanLoop() {
-    const SCAN_INTERVAL_MS = 250; // Scan ~4 frames/sec
+    const SCAN_INTERVAL_MS = 120; // Scan ~8 frames/sec
     let lastScanTime = 0;
 
     function loop(timestamp: number) {
       if (!streamRef.current || !videoRef.current || !canvasRef.current) return;
 
-      // Throttle to SCAN_INTERVAL_MS
       if (timestamp - lastScanTime < SCAN_INTERVAL_MS) {
         scanLoopRef.current = requestAnimationFrame(loop);
         return;
       }
       lastScanTime = timestamp;
 
-      // Skip if still processing previous frame
       if (processingRef.current) {
         scanLoopRef.current = requestAnimationFrame(loop);
         return;
@@ -1758,19 +1764,29 @@ function LiveScannerTab() {
         return;
       }
 
-      // Draw video frame to canvas
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d");
+      // Crop center horizontal strip (middle 40% of height) and downscale
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const stripHeight = Math.round(vh * 0.4);
+      const stripY = Math.round((vh - stripHeight) / 2);
+      const scale = SCAN_CANVAS_WIDTH / vw;
+      const canvasH = Math.round(stripHeight * scale);
+
+      canvas.width = SCAN_CANVAS_WIDTH;
+      canvas.height = canvasH;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) {
         scanLoopRef.current = requestAnimationFrame(loop);
         return;
       }
-      ctx.drawImage(video, 0, 0);
+      // Draw only the center strip, scaled down
+      ctx.drawImage(video, 0, stripY, vw, stripHeight, 0, 0, SCAN_CANVAS_WIDTH, canvasH);
 
-      // Decode barcode from canvas
+      // Pass ImageData directly to zxing (no Blob encoding needed)
+      const imageData = ctx.getImageData(0, 0, SCAN_CANVAS_WIDTH, canvasH);
+
       processingRef.current = true;
-      decodeFromCanvas(canvas)
+      decodeFromImageData(imageData)
         .then((ean) => {
           if (ean && !scannedEansRef.current.has(ean)) {
             scannedEansRef.current.add(ean);
@@ -1778,7 +1794,6 @@ function LiveScannerTab() {
             playBeepSound();
             triggerHaptic();
             handleEanDetected(ean);
-            // Brief pause after successful scan to avoid rapid-fire
             setTimeout(() => {
               processingRef.current = false;
             }, 800);
@@ -1796,19 +1811,14 @@ function LiveScannerTab() {
     scanLoopRef.current = requestAnimationFrame(loop);
   }
 
-  // ─── Decode barcode from canvas using zxing-wasm ───
+  // ─── Decode barcode from ImageData using zxing-wasm ───
 
-  async function decodeFromCanvas(canvas: HTMLCanvasElement): Promise<string | null> {
+  async function decodeFromImageData(imageData: ImageData): Promise<string | null> {
     try {
       const mod = zxingRef.current ?? (await import("zxing-wasm/reader"));
       if (!zxingRef.current) zxingRef.current = mod;
 
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", 0.8)
-      );
-      if (!blob) return null;
-
-      const results = await mod.readBarcodes(blob, {
+      const results = await mod.readBarcodes(imageData, {
         formats: ["EAN13", "EAN8", "UPCA", "UPCE"],
       });
       const valid = results.filter((r) => r.isValid && r.text.trim());
