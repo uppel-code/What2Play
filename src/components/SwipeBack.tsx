@@ -7,27 +7,28 @@ const EDGE_ZONE = 30; // px from left edge to start swipe
 const MIN_SWIPE_DISTANCE = 80; // px to trigger navigation
 const MAX_INDICATOR = 120; // max visual indicator width (must be >= MIN_SWIPE_DISTANCE)
 
-// Pages that are "root" level — swipe-back should not go beyond these
+// Pages that are "root" level — swipe-back should not navigate away from these
 const ROOT_PAGES = new Set(["/", "/today", "/add", "/achievements", "/settings", "/manage", "/groups"]);
 
 export default function SwipeBack() {
   const router = useRouter();
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
   const navHistoryRef = useRef<string[]>([]);
   const touchRef = useRef<{ startX: number; startY: number; started: boolean }>({
     startX: 0,
     startY: 0,
     started: false,
   });
+  const swipeProgressRef = useRef(0);
   const [swipeProgress, setSwipeProgress] = useState(0);
 
-  // Track navigation history ourselves since browser history API is limited
+  // Keep pathname ref in sync (avoids stale closures in touch handlers)
   useEffect(() => {
+    pathnameRef.current = pathname;
     const history = navHistoryRef.current;
-    // Avoid duplicates when pathname hasn't changed (re-renders)
     if (history[history.length - 1] !== pathname) {
       history.push(pathname);
-      // Keep history bounded
       if (history.length > 50) history.shift();
     }
   }, [pathname]);
@@ -44,35 +45,46 @@ export default function SwipeBack() {
     const touch = e.touches[0];
     const dx = touch.clientX - touchRef.current.startX;
     const dy = Math.abs(touch.clientY - touchRef.current.startY);
-    // Cancel if vertical movement dominates (user is scrolling)
     if (dy > dx * 1.5) {
       touchRef.current.started = false;
+      swipeProgressRef.current = 0;
       setSwipeProgress(0);
       return;
     }
     if (dx > 0) {
-      setSwipeProgress(Math.min(dx, MAX_INDICATOR));
+      const clamped = Math.min(dx, MAX_INDICATOR);
+      swipeProgressRef.current = clamped;
+      setSwipeProgress(clamped);
     }
   }, []);
 
   const handleTouchEnd = useCallback(() => {
     if (!touchRef.current.started) return;
-    if (swipeProgress >= MIN_SWIPE_DISTANCE) {
-      // Don't navigate back from root pages — would exit the app
-      if (ROOT_PAGES.has(pathname)) {
-        // Already on a root page, nowhere to go back
-      } else if (navHistoryRef.current.length > 1) {
-        // Pop current page from our history
-        navHistoryRef.current.pop();
-        router.back();
+    const progress = swipeProgressRef.current;
+    const currentPath = pathnameRef.current;
+
+    if (progress >= MIN_SWIPE_DISTANCE) {
+      if (ROOT_PAGES.has(currentPath)) {
+        // On a root page — don't navigate (would exit the app)
       } else {
-        // No history (e.g. deep link) — go home instead of exiting the app
-        router.push("/");
+        const history = navHistoryRef.current;
+        // Pop current page
+        if (history.length > 1) {
+          history.pop();
+          const previousPage = history[history.length - 1];
+          // Use router.push instead of router.back to avoid exiting Capacitor WebView
+          router.push(previousPage);
+        } else {
+          // No history — go home
+          router.push("/");
+        }
       }
     }
+
     touchRef.current.started = false;
+    swipeProgressRef.current = 0;
     setSwipeProgress(0);
-  }, [swipeProgress, router, pathname]);
+  }, [router]);
 
   useEffect(() => {
     document.addEventListener("touchstart", handleTouchStart, { passive: true });
