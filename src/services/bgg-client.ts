@@ -107,7 +107,7 @@ export async function searchBgg(query: string): Promise<BggSearchResult[]> {
 }
 
 export async function fetchBggThing(bggId: number): Promise<BggGameData | null> {
-  const url = `${BGG_API_BASE}/thing?id=${bggId}&stats=1`;
+  const url = `${BGG_API_BASE}/thing?id=${bggId}&stats=1&versions=1`;
   try {
     const [{ status, data }, language] = await Promise.all([bggFetch(url), getGameLanguage()]);
     if (status === 401) throw new Error("BGG_API_TOKEN_INVALID");
@@ -206,17 +206,27 @@ function parseThingXml(xml: string, preferredLanguage: string = "en"): BggGameDa
   // Try to find a localized name if language is not English
   let name = primaryName;
   if (preferredLanguage !== "en") {
-    const altNameRegex = /<name\s[^>]*type="alternate"[^>]*value="([^"]*)"[^>]*\/>/g;
-    const alternateNames: string[] = [];
-    let altMatch;
-    while ((altMatch = altNameRegex.exec(block)) !== null) {
-      alternateNames.push(decodeXmlEntities(altMatch[1]));
-    }
-    if (preferredLanguage === "de" && alternateNames.length > 0) {
-      // Score each alternate name for "Germanness"
-      const germanName = pickGermanName(alternateNames, primaryName);
-      if (germanName) {
-        name = germanName;
+    // Check if a version in the preferred language exists (BGG versions have explicit language tags)
+    const languageMap: Record<string, string> = { de: "German", fr: "French", es: "Spanish", it: "Italian", nl: "Dutch", pt: "Portuguese" };
+    const targetLang = languageMap[preferredLanguage];
+    const hasTargetVersion = targetLang
+      ? new RegExp(`<link\\s[^>]*type="language"[^>]*value="${targetLang}"`, "i").test(xml)
+      : false;
+
+    if (hasTargetVersion) {
+      const altNameRegex = /<name\s[^>]*type="alternate"[^>]*value="([^"]*)"[^>]*\/>/g;
+      const alternateNames: string[] = [];
+      // Only parse alternate names from the main item block (before <versions>)
+      const mainBlock = xml.includes("<versions>") ? xml.split("<versions>")[0] : block;
+      let altMatch;
+      while ((altMatch = altNameRegex.exec(mainBlock)) !== null) {
+        alternateNames.push(decodeXmlEntities(altMatch[1]));
+      }
+      if (preferredLanguage === "de" && alternateNames.length > 0) {
+        const germanName = pickGermanName(alternateNames, primaryName);
+        if (germanName) {
+          name = germanName;
+        }
       }
     }
   }
@@ -340,69 +350,81 @@ function parseExpansionLinks(xml: string): BggSearchResult[] {
 }
 
 // ─── German Name Detection ───
-// BGG doesn't tag alternate names with language codes, so we score them.
-// We filter out names that look like other languages first, then pick the
-// most likely German name using positive signals.
+// BGG doesn't tag alternate names with language codes.
+// Strategy: 1) Remove non-Latin scripts, 2) Remove known non-German languages,
+// 3) Score remaining for German signals, 4) Pick best or shortest at tie.
 
+// Step 1: Filter non-Latin scripts (Greek, Cyrillic, Hebrew, Arabic, Thai, CJK, Korean etc.)
+const NON_LATIN_SCRIPT = /[\u0370-\u03FF\u0400-\u04FF\u0590-\u05FF\u0600-\u06FF\u0E00-\u0E7F\u3000-\u9FFF\uAC00-\uD7AF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+// Step 2: Known non-German language patterns
 const NON_GERMAN_PATTERNS = [
-  /^(les|le|la|l'|un|une|des|du|de la)\b/i,   // French articles
-  /[àâçéèêëîïôùûœæ]/i,                          // French accents
-  /\b(juego|el|los|las|una|del|para)\b/i,        // Spanish
-  /\b(jogo|uma|pela|os|as)\b/i,                  // Portuguese
-  /\b(gioco|il|gli|della|nella)\b/i,             // Italian
-  /\b(spel|het|van|een|voor|uit|tot|ook|maar|deze)\b/i, // Dutch
-  /\b(dobbel|vouwen|kaart|bordspel|speler)\b/i,        // Dutch game words
-  /[ąćęłńóśźżő]/i,                               // Polish/Hungarian
-  /[кириллица]/i,                                 // Cyrillic check
-  /[\u0400-\u04FF]/,                              // Cyrillic range
-  /[\u3000-\u9FFF]/,                              // CJK
+  /[àâçéèêëîïôùûœæ]/i,                                             // French accents
+  /^(les|le|la|l'|un|une|des|du|de la)\b/i,                        // French articles
+  /\b(quête|neuvième|planète|anniversaire|haricots|aventuriers)\b/i, // French words
+  /\b(juego|búsqueda|los|las|del|para|al|puñado|judías)\b/i,       // Spanish
+  /[ñ¡¿]/,                                                          // Spanish chars
+  /\b(jogo|uma|pela|busca|nono|tripulação)\b/i,                    // Portuguese
+  /\b(gioco|scoperta|pianeta|nuova|sfida|codice|nome|pandemia)\b/i, // Italian
+  /\b(spel|het|van|een|voor|uit|tot|weg|planeet|editie)\b/i,       // Dutch
+  /\b(dobbel|vouwen|kaart|bordspel)\b/i,                             // Dutch game words
+  /[ąćęłńóśźżŁ]/,                                                  // Polish diacritics
+  /\b(tajniacy|poszukiwaniu|dziewiątej|fasolki)\b/i,               // Polish words
+  /[őűŐŰ]/,                                                        // Hungarian specific chars
+  /\b(küldetés|bolygó|szüret|csoda|fesztáv|szellemek|szigete|babszüret)\b/i, // Hungarian words
+  /[řšťžůčěďňŘŠŤŽŮČĚĎŇ]/,                                        // Czech/Slovak
+  /[ăâțșĂÂȚȘ]/,                                                    // Romanian
+  /\b(căutarea|lumea|păsărilor|nume|cod)\b/i,                        // Romanian words
+  /\b(potraga|izdanje|iskanje|posada|společně)\b/i,                 // South Slavic/Czech
+  /\b(keşif|gezegen|görevi)\b/i,                                    // Turkish
+  /[āēīōūĀĒĪŌŪ]/,                                                 // Latvian/Lithuanian
+  /\b(edition|quest|anniversary|the\b.*\bquest)\b/i,                // English
+  /\b(afrikaans|edisi|indonesia)\b/i,                               // Other
+  /\b(menolippu|valtakunta|uudisasukkaat|tiivulised)\b/i,          // Finnish/Estonian
+  /\b(fazole|duchové|ostrova|odysea)\b/i,                          // Czech words
+  /\b(codi|secret|codinomes|código|secreto)\b/i,                   // Catalan/Spanish/Portuguese
 ];
 
-const GERMAN_SIGNALS = [
-  /[äöüßÄÖÜ]/,                                                   // Umlauts
-  /\b(der|die|das|des|dem|den|ein|eine|einer|eines)\b/i,          // Articles
-  /\b(und|oder|für|von|zu|mit|auf|aus|bei|nach|über|unter)\b/i,   // Prepositions
-  /\b(nicht|ist|sind|wird|kann|muss|soll|darf|hat|haben)\b/i,     // Verbs
-  /\b(Spiel|Abenteuer|Reise|Welt|Stadt|Nacht|Karte|Würfel)\b/i,  // Game words
-  /\b(große|kleine|neue|erste|letzte|schnelle)\b/i,               // Adjectives
+// Step 3: Positive German signals (with weights)
+const GERMAN_SIGNALS: [RegExp, number][] = [
+  [/[äöüßÄÖÜ]/, 3],                                                               // Umlauts (strong)
+  [/\b(der|die|das|des|dem|den|ein|eine|einer|eines|einem)\b/i, 3],                 // Articles
+  [/\b(und|oder|für|von|zu|mit|auf|aus|bei|nach|über|unter|um|zum|zur)\b/i, 2],     // Prepositions
+  [/\b(nicht|ist|sind|wird|kann|muss|soll|darf|hat|haben|reist|gemeinsam|glaub)\b/i, 2], // Verbs
+  [/\b(Spiel|Abenteuer|Reise|Welt|Stadt|Nacht|Karte|Würfel|Planeten|Jahre)\b/i, 2], // Game words
+  [/\b(große|kleine|neue|erste|letzte|schnelle)\b/i, 1],                           // Adjectives
+  [/(?:ung|heit|keit|lich|isch|chen|tion|ieren)\b/i, 1],                           // German suffixes
 ];
 
-function pickGermanName(alternateNames: string[], primaryName: string): string | null {
-  // If there's only one alternate and primary is clearly English, use it
-  if (alternateNames.length === 1) {
-    const only = alternateNames[0];
-    // Skip if it looks like another known language
-    if (NON_GERMAN_PATTERNS.some((p) => p.test(only))) return null;
-    // If it's different from primary, it's likely a translation
-    if (only.toLowerCase() !== primaryName.toLowerCase()) return only;
-    return null;
-  }
+function pickGermanName(alternateNames: string[], _primaryName: string): string | null {
+  // Step 1: Remove non-Latin scripts
+  let candidates = alternateNames.filter((n) => !NON_LATIN_SCRIPT.test(n));
+  if (candidates.length === 0) return null;
 
-  // Filter out names that look like other languages
-  const candidates = alternateNames.filter(
-    (n) => !NON_GERMAN_PATTERNS.some((p) => p.test(n))
-  );
-
+  // Step 2: Remove known non-German languages
+  candidates = candidates.filter((n) => !NON_GERMAN_PATTERNS.some((p) => p.test(n)));
   if (candidates.length === 0) return null;
   if (candidates.length === 1) return candidates[0];
 
-  // Score remaining candidates
-  let bestName: string | null = null;
-  let bestScore = -1;
-  for (const n of candidates) {
+  // Step 3: Score remaining for German signals
+  const scored = candidates.map((n) => {
     let score = 0;
-    for (const pattern of GERMAN_SIGNALS) {
-      if (pattern.test(n)) score++;
+    for (const [pattern, weight] of GERMAN_SIGNALS) {
+      if (pattern.test(n)) score += weight;
     }
-    // Bonus: contains common German suffixes
-    if (/(?:ung|heit|keit|lich|isch|chen)\b/i.test(n)) score++;
-    if (score > bestScore) {
-      bestScore = score;
-      bestName = n;
+    return { name: n, score };
+  });
+
+  // Penalize special/anniversary editions — prefer base game names
+  for (const s of scored) {
+    if (/\b(jubil\w*|anniversary|aniversario|édition|sonder\w*|special|limited)\b/i.test(s.name)) {
+      s.score = Math.max(0, s.score - 6);
     }
   }
 
-  return bestName;
+  // Sort by score desc, then by shortest name (prefer base game over editions)
+  scored.sort((a, b) => b.score - a.score || a.name.length - b.name.length);
+  return scored[0].name;
 }
 
 function decodeXmlEntities(str: string): string {
