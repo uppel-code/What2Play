@@ -7,6 +7,7 @@ import { createGame, getGameByBggId } from "@/lib/db-client";
 import { searchBgg as bggSearch, fetchBggThing, fetchBggCollection, isBggConfigured } from "@/services/bgg-client";
 import { isAiConfigured, recognizeGamesFromImage, compressImage, verifyGameMatch, getGameLanguage, lookupGameByEan } from "@/services/ai-client";
 import type { RecognizedGame, VerificationResult } from "@/services/ai-client";
+import { lookupGameUpc } from "@/services/gameupc-client";
 import { checkOnGameAdd, checkOnPhotoScan } from "@/services/achievements";
 import AchievementToast from "@/components/AchievementToast";
 
@@ -1817,11 +1818,11 @@ function LiveScannerTab() {
     }
   }
 
-  // ─── Handle detected EAN: AI lookup → BGG search by name ───
+  // ─── Handle detected EAN: GameUPC → AI fallback → BGG ───
   //
-  // IMPORTANT: Do NOT search BGG with raw EAN numbers!
-  // BGG search is name-based and returns garbage results for numeric queries.
-  // Instead: AI identifies the game name from EAN → then search BGG by name.
+  // 1. GameUPC: Free barcode→BGG lookup (returns BGG ID directly)
+  // 2. AI fallback: Identifies game name from EAN prefix (costs per call)
+  // 3. Never search BGG with raw EAN numbers (returns garbage)
 
   async function handleEanDetected(ean: string) {
     const newGame: ScannedGame = {
@@ -1835,11 +1836,31 @@ function LiveScannerTab() {
     };
     setScannedGames((prev) => [newGame, ...prev]);
 
-    // Step 1: AI lookup — identifies game name from EAN (knows publisher prefixes)
+    // Step 1: GameUPC — free, returns BGG ID directly
+    try {
+      const upcResult = await lookupGameUpc(ean);
+      if (upcResult && upcResult.bggId) {
+        const data = await fetchBggThing(upcResult.bggId);
+        if (data) {
+          const existing = await getGameByBggId(data.bggId);
+          setScannedGames((prev) =>
+            prev.map((g) =>
+              g.ean === ean
+                ? { ...g, name: data.name, bggId: data.bggId, thumbnail: data.thumbnail, bggData: data, status: existing ? "duplicate" : "found" }
+                : g
+            )
+          );
+          return;
+        }
+      }
+    } catch {
+      // GameUPC failed, continue to AI fallback
+    }
+
+    // Step 2: AI fallback — identifies game name from EAN (costs per call)
     try {
       const aiResult = await lookupGameByEan(ean);
       if (aiResult.gameName) {
-        // Step 2: Search BGG with the game name the AI returned
         const bggResults = await bggSearch(aiResult.gameName);
         if (bggResults.length > 0) {
           const data = await fetchBggThing(bggResults[0].bggId);
@@ -1855,7 +1876,7 @@ function LiveScannerTab() {
             return;
           }
         }
-        // AI found name but BGG had no match — show name but mark not found
+        // AI found name but BGG had no match
         setScannedGames((prev) =>
           prev.map((g) => (g.ean === ean ? { ...g, name: aiResult.gameName!, status: "not_found" } : g))
         );
