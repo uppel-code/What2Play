@@ -10,6 +10,7 @@ import type { BggGameData, BggSearchResult } from "@/types/game";
 import { Capacitor } from "@capacitor/core";
 import { CapacitorHttp } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
+import { getGameLanguage } from "@/services/ai-client";
 
 const BGG_API_BASE = "https://boardgamegeek.com/xmlapi2";
 const TOKEN_KEY = "bgg_api_token";
@@ -108,10 +109,10 @@ export async function searchBgg(query: string): Promise<BggSearchResult[]> {
 export async function fetchBggThing(bggId: number): Promise<BggGameData | null> {
   const url = `${BGG_API_BASE}/thing?id=${bggId}&stats=1`;
   try {
-    const { status, data } = await bggFetch(url);
+    const [{ status, data }, language] = await Promise.all([bggFetch(url), getGameLanguage()]);
     if (status === 401) throw new Error("BGG_API_TOKEN_INVALID");
     if (status !== 200) return null;
-    return parseThingXml(data);
+    return parseThingXml(data, language);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("BGG_API_TOKEN")) throw error;
     return null;
@@ -191,15 +192,34 @@ function parseSearchXml(xml: string): BggSearchResult[] {
   return results;
 }
 
-function parseThingXml(xml: string): BggGameData | null {
+function parseThingXml(xml: string, preferredLanguage: string = "en"): BggGameData | null {
   const itemMatch = xml.match(/<item\s[^>]*id="(\d+)"[^>]*>([\s\S]*?)<\/item>/);
   if (!itemMatch) return null;
 
   const bggId = parseInt(itemMatch[1], 10);
   const block = itemMatch[2];
 
-  const nameMatch = block.match(/<name\s[^>]*type="primary"[^>]*value="([^"]*)"[^>]*\/>/);
-  const name = nameMatch ? nameMatch[1] : `Unknown (${bggId})`;
+  // Extract primary name (usually English)
+  const primaryMatch = block.match(/<name\s[^>]*type="primary"[^>]*value="([^"]*)"[^>]*\/>/);
+  const primaryName = primaryMatch ? decodeXmlEntities(primaryMatch[1]) : `Unknown (${bggId})`;
+
+  // Try to find a localized name if language is not English
+  let name = primaryName;
+  if (preferredLanguage !== "en") {
+    const altNameRegex = /<name\s[^>]*type="alternate"[^>]*value="([^"]*)"[^>]*\/>/g;
+    const alternateNames: string[] = [];
+    let altMatch;
+    while ((altMatch = altNameRegex.exec(block)) !== null) {
+      alternateNames.push(decodeXmlEntities(altMatch[1]));
+    }
+    if (preferredLanguage === "de" && alternateNames.length > 0) {
+      // Score each alternate name for "Germanness"
+      const germanName = pickGermanName(alternateNames, primaryName);
+      if (germanName) {
+        name = germanName;
+      }
+    }
+  }
 
   const minPlayers = extractSelfClosingValue(block, "minplayers");
   const maxPlayers = extractSelfClosingValue(block, "maxplayers");
@@ -317,6 +337,82 @@ function parseExpansionLinks(xml: string): BggSearchResult[] {
 
   results.sort((a, b) => a.name.localeCompare(b.name));
   return results;
+}
+
+// ─── German Name Detection ───
+// BGG doesn't tag alternate names with language codes, so we score them.
+// We filter out names that look like other languages first, then pick the
+// most likely German name using positive signals.
+
+const NON_GERMAN_PATTERNS = [
+  /^(les|le|la|l'|un|une|des|du|de la)\b/i,   // French articles
+  /[àâçéèêëîïôùûœæ]/i,                          // French accents
+  /\b(juego|el|los|las|una|del|para)\b/i,        // Spanish
+  /\b(jogo|uma|pela|os|as)\b/i,                  // Portuguese
+  /\b(gioco|il|gli|della|nella)\b/i,             // Italian
+  /\b(spel|het|van|een|voor|uit|tot|ook|maar|deze)\b/i, // Dutch
+  /\b(dobbel|vouwen|kaart|bordspel|speler)\b/i,        // Dutch game words
+  /[ąćęłńóśźżő]/i,                               // Polish/Hungarian
+  /[кириллица]/i,                                 // Cyrillic check
+  /[\u0400-\u04FF]/,                              // Cyrillic range
+  /[\u3000-\u9FFF]/,                              // CJK
+];
+
+const GERMAN_SIGNALS = [
+  /[äöüßÄÖÜ]/,                                                   // Umlauts
+  /\b(der|die|das|des|dem|den|ein|eine|einer|eines)\b/i,          // Articles
+  /\b(und|oder|für|von|zu|mit|auf|aus|bei|nach|über|unter)\b/i,   // Prepositions
+  /\b(nicht|ist|sind|wird|kann|muss|soll|darf|hat|haben)\b/i,     // Verbs
+  /\b(Spiel|Abenteuer|Reise|Welt|Stadt|Nacht|Karte|Würfel)\b/i,  // Game words
+  /\b(große|kleine|neue|erste|letzte|schnelle)\b/i,               // Adjectives
+];
+
+function pickGermanName(alternateNames: string[], primaryName: string): string | null {
+  // If there's only one alternate and primary is clearly English, use it
+  if (alternateNames.length === 1) {
+    const only = alternateNames[0];
+    // Skip if it looks like another known language
+    if (NON_GERMAN_PATTERNS.some((p) => p.test(only))) return null;
+    // If it's different from primary, it's likely a translation
+    if (only.toLowerCase() !== primaryName.toLowerCase()) return only;
+    return null;
+  }
+
+  // Filter out names that look like other languages
+  const candidates = alternateNames.filter(
+    (n) => !NON_GERMAN_PATTERNS.some((p) => p.test(n))
+  );
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0];
+
+  // Score remaining candidates
+  let bestName: string | null = null;
+  let bestScore = -1;
+  for (const n of candidates) {
+    let score = 0;
+    for (const pattern of GERMAN_SIGNALS) {
+      if (pattern.test(n)) score++;
+    }
+    // Bonus: contains common German suffixes
+    if (/(?:ung|heit|keit|lich|isch|chen)\b/i.test(n)) score++;
+    if (score > bestScore) {
+      bestScore = score;
+      bestName = n;
+    }
+  }
+
+  return bestName;
+}
+
+function decodeXmlEntities(str: string): string {
+  return str
+    .replace(/&#039;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
 }
 
 function extractText(block: string, tag: string): string | null {
