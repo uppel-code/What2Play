@@ -1817,7 +1817,11 @@ function LiveScannerTab() {
     }
   }
 
-  // ─── Handle detected EAN: BGG search → AI fallback ───
+  // ─── Handle detected EAN: AI lookup → BGG search by name ───
+  //
+  // IMPORTANT: Do NOT search BGG with raw EAN numbers!
+  // BGG search is name-based and returns garbage results for numeric queries.
+  // Instead: AI identifies the game name from EAN → then search BGG by name.
 
   async function handleEanDetected(ean: string) {
     const newGame: ScannedGame = {
@@ -1831,31 +1835,11 @@ function LiveScannerTab() {
     };
     setScannedGames((prev) => [newGame, ...prev]);
 
-    // Step 1: Try BGG search with EAN directly
-    try {
-      const bggResults = await bggSearch(ean);
-      if (bggResults.length > 0) {
-        const data = await fetchBggThing(bggResults[0].bggId);
-        if (data) {
-          const existing = await getGameByBggId(data.bggId);
-          setScannedGames((prev) =>
-            prev.map((g) =>
-              g.ean === ean
-                ? { ...g, name: data.name, bggId: data.bggId, thumbnail: data.thumbnail, bggData: data, status: existing ? "duplicate" : "found" }
-                : g
-            )
-          );
-          return;
-        }
-      }
-    } catch {
-      // BGG search failed, continue to AI fallback
-    }
-
-    // Step 2: AI lookup by EAN
+    // Step 1: AI lookup — identifies game name from EAN (knows publisher prefixes)
     try {
       const aiResult = await lookupGameByEan(ean);
       if (aiResult.gameName) {
+        // Step 2: Search BGG with the game name the AI returned
         const bggResults = await bggSearch(aiResult.gameName);
         if (bggResults.length > 0) {
           const data = await fetchBggThing(bggResults[0].bggId);
@@ -1871,6 +1855,7 @@ function LiveScannerTab() {
             return;
           }
         }
+        // AI found name but BGG had no match — show name but mark not found
         setScannedGames((prev) =>
           prev.map((g) => (g.ean === ean ? { ...g, name: aiResult.gameName!, status: "not_found" } : g))
         );
